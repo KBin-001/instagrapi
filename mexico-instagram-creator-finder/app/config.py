@@ -223,16 +223,22 @@ def build_settings(
     return settings
 
 
-def validate_settings(settings: Settings) -> list[str]:
+def validate_settings(settings: Settings, skip_credentials: bool = False) -> list[str]:
     """
     校验配置完整性。返回错误信息列表（空表示通过）。
+
+    Args:
+        settings: 项目配置
+        skip_credentials: 为 True 时跳过 IG_USERNAME/IG_PASSWORD 检查，
+                          供 dry-run 模式使用。
     """
     errors: list[str] = []
 
-    if not settings.ig_username:
-        errors.append("IG_USERNAME 未设置（请在 .env 或环境变量中配置）")
-    if not settings.ig_password:
-        errors.append("IG_PASSWORD 未设置（请在 .env 或环境变量中配置）")
+    if not skip_credentials:
+        if not settings.ig_username:
+            errors.append("IG_USERNAME 未设置（请在 .env 或环境变量中配置）")
+        if not settings.ig_password:
+            errors.append("IG_PASSWORD 未设置（请在 .env 或环境变量中配置）")
 
     if settings.instagram.request_delay_min_seconds > settings.instagram.request_delay_max_seconds:
         errors.append("request_delay_min_seconds 不能大于 request_delay_max_seconds")

@@ -229,17 +229,24 @@ def search_cmd(
     exclude: list[str] | None = typer.Option(None, "--exclude", "-e", help="排除名单文件路径或用户名（可多次指定）"),  # noqa: B008
     resume: bool = typer.Option(False, "--resume", help="恢复上次任务"),
     reset_task: bool = typer.Option(False, "--reset-task", help="重置任务后重新开始"),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="使用预定义示例数据测试完整流程，不登录 Instagram、不联网",
+    ),
 ) -> None:
     """搜索墨西哥 Instagram 内容创作者。"""
     settings = _get_settings(hashtags, min_followers, max_followers, exclude, resume, reset_task)
 
-    # 检查凭据
-    if not settings.ig_username or not settings.ig_password:
-        _print_no_credentials_hint()
-        raise typer.Exit(code=1)
+    # dry-run 模式跳过凭据检查
+    if not dry_run:
+        # 检查凭据
+        if not settings.ig_username or not settings.ig_password:
+            _print_no_credentials_hint()
+            raise typer.Exit(code=1)
 
-    # 校验配置
-    errors = validate_settings(settings)
+    # 校验配置（dry-run 模式跳过凭据检查）
+    errors = validate_settings(settings, skip_credentials=dry_run)
     if errors:
         console.print("[bold red]配置校验失败：[/bold red]")
         for err in errors:
@@ -252,13 +259,14 @@ def search_cmd(
     else:
         hashtags_list = settings.hashtags
 
+    mode_label = " [cyan][DRY-RUN 示例数据][/cyan]" if dry_run else ""
     console.print(
         Panel.fit(
             f"[bold]Mexico Instagram Creator Finder[/bold] v{__version__}\n"
             f"Hashtag 数: {len(hashtags_list)}  "
             f"粉丝区间: {settings.filters.min_followers}-{settings.filters.max_followers}\n"
             f"最大候选账号: {settings.discovery.max_candidates}  "
-            f"最大分析账号: {settings.discovery.max_profiles_to_analyze}",
+            f"最大分析账号: {settings.discovery.max_profiles_to_analyze}{mode_label}",
             title="开始搜索",
             border_style="green",
         )
@@ -266,7 +274,7 @@ def search_cmd(
 
     # 调用主流程
     try:
-        _run_search_pipeline(settings, hashtags_list)
+        _run_search_pipeline(settings, hashtags_list, dry_run=dry_run)
     except SecurityStopError as e:
         console.print(
             Panel.fit(
@@ -285,8 +293,15 @@ def search_cmd(
         raise typer.Exit(code=4) from None
 
 
-def _run_search_pipeline(settings: Settings, hashtags_list: list[str]) -> None:
-    """串联主流程：登录 → 发现 → 去重 → 排除 → 资料 → 筛选 → 分析 → 评分 → 存储 → 导出。"""
+def _run_search_pipeline(settings: Settings, hashtags_list: list[str], dry_run: bool = False) -> None:
+    """串联主流程：登录 → 发现 → 去重 → 排除 → 资料 → 筛选 → 分析 → 评分 → 存储 → 导出。
+
+    Args:
+        settings: 项目配置
+        hashtags_list: 待处理的 Hashtag 列表
+        dry_run: 为 True 时使用 FakeInstagramClient 与预定义示例数据，
+                 不登录 Instagram、不联网，仅用于本地测试与流程演示。
+    """
     from sqlalchemy import select
 
     from app.analysis.account_classifier import classify_account_type
@@ -308,7 +323,6 @@ def _run_search_pipeline(settings: Settings, hashtags_list: list[str]) -> None:
         parse_exclude_strings,
     )
     from app.export import export_records
-    from app.instagram.client import InstagramClient
     from app.storage.checkpoint import (
         is_user_analyzed,
         load_checkpoint,
@@ -332,6 +346,17 @@ def _run_search_pipeline(settings: Settings, hashtags_list: list[str]) -> None:
         upsert_score,
         upsert_task,
     )
+
+    # 根据模式选择客户端：dry-run 使用 Fake，否则使用真实 InstagramClient
+    if dry_run:
+        from app.instagram.fake_client import FakeInstagramClient
+
+        client = FakeInstagramClient(settings)
+        console.print("[cyan][DRY-RUN] 使用预定义示例数据，不登录 Instagram、不联网[/cyan]")
+    else:
+        from app.instagram.client import InstagramClient
+
+        client = InstagramClient(settings)
 
     # 任务 ID
     task_id = _generate_task_id()
@@ -367,9 +392,11 @@ def _run_search_pipeline(settings: Settings, hashtags_list: list[str]) -> None:
     save_checkpoint(session, cp)
 
     try:
-        # 1. 登录
-        console.print("[bold]阶段 1/6: 登录 Instagram...[/bold]")
-        client = InstagramClient(settings)
+        # 1. 登录（dry-run 模式下为模拟登录，立即成功）
+        if dry_run:
+            console.print("[bold]阶段 1/6: 模拟登录（DRY-RUN）...[/bold]")
+        else:
+            console.print("[bold]阶段 1/6: 登录 Instagram...[/bold]")
         client.login_from_env()
 
         # 2. 发现候选账号

@@ -14,12 +14,13 @@
 3. [CLI 命令详解](#3-cli-命令详解)
 4. [配置文件说明](#4-配置文件说明)
 5. [典型使用场景](#5-典型使用场景)
-6. [单元测试运行](#6-单元测试运行)
-7. [静态检查](#7-静态检查)
-8. [任务状态与断点续传](#8-任务状态与断点续传)
-9. [导出文件说明](#9-导出文件说明)
-10. [停止原因与异常处理](#10-停止原因与异常处理)
-11. [常见问题](#11-常见问题)
+6. [无 Instagram 账号测试（dry-run 模式）](#6-无-instagram-账号测试dry-run-模式)
+7. [单元测试运行](#7-单元测试运行)
+8. [静态检查](#8-静态检查)
+9. [任务状态与断点续传](#9-任务状态与断点续传)
+10. [导出文件说明](#10-导出文件说明)
+11. [停止原因与异常处理](#11-停止原因与异常处理)
+12. [常见问题](#12-常见问题)
 
 ---
 
@@ -168,12 +169,13 @@ python main.py search [OPTIONS]
 
 | 选项 | 简写 | 说明 |
 |------|------|------|
-| `--hashtags <TAG...>` | `-t` | Hashtag 列表（不带 `#`），可多次指定；不指定则使用 `config/hashtags.yaml` 默认 18 个 |
+| `--hashtags <TAG>` | `-t` | Hashtag（不带 `#`），可多次指定；不指定则使用 `config/hashtags.yaml` 默认 18 个 |
 | `--min-followers <N>` | | 覆盖最小粉丝数（默认 20000） |
 | `--max-followers <N>` | | 覆盖最大粉丝数（默认 300000） |
 | `--exclude <PATH_OR_NAME>` | `-e` | 排除名单文件路径或用户名，可多次指定 |
 | `--resume` | | 恢复上次未完成的任务 |
 | `--reset-task` | | 重置任务后重新开始 |
+| `--dry-run` | | **使用预定义示例数据测试完整流程，不登录 Instagram、不联网** |
 
 **执行过程显示**（Rich UI）：
 - 当前阶段（1/6 登录 → 6/6 完成）
@@ -357,9 +359,115 @@ python main.py export --task-id task_20260718_153000_abc12345 --formats csv xlsx
 
 ---
 
-## 6. 单元测试运行
+## 6. 无 Instagram 账号测试（dry-run 模式）
 
-### 6.1 运行全部测试
+### 6.1 什么是 dry-run 模式
+
+`--dry-run` 选项让你**无需 Instagram 账号、无需联网**即可运行完整搜索流程：
+
+- 使用 [app/instagram/fake_client.py](app/instagram/fake_client.py) 中的 `FakeInstagramClient` 替代真实客户端
+- 加载预定义的 10 个示例账号（覆盖各种筛选场景）
+- 跑完整 6 阶段流程：登录（模拟）→ 发现 → 去重 → 排除 → 分析 → 导出
+- 生成真实的 CSV/JSON/XLSX 导出文件
+- 不调用任何 instagrapi API、不发起任何网络请求
+
+### 6.2 运行 dry-run
+
+```powershell
+cd d:\桌面\ins\instagrapi\mexico-instagram-creator-finder
+
+# 使用默认 18 个 Hashtag
+python main.py search --dry-run
+
+# 或指定 Hashtag（每个 -t 传一个）
+python main.py search --dry-run --hashtags perfumemexico --hashtags bellezamx --hashtags skincaremx
+```
+
+> **注意**：Typer 的多值选项需用多次 `--hashtags` 传参，不能用空格分隔。
+
+### 6.3 预期输出
+
+```text
+┌─────────────────────── 开始搜索 ────────────────────────┐
+│ Mexico Instagram Creator Finder v0.1.0                  │
+│ Hashtag 数: 3  粉丝区间: 20000-300000                   │
+│ 最大候选账号: 300  最大分析账号: 100 [DRY-RUN 示例数据] │
+└─────────────────────────────────────────────────────────┘
+[DRY-RUN] 使用预定义示例数据，不登录 Instagram、不联网
+阶段 1/6: 模拟登录（DRY-RUN）...
+阶段 2/6: 从 Hashtag 发现候选账号...
+待处理 Hashtag: 3 个
+  发现候选... ───────────────────────────── 3/3 0:00:00
+阶段 3/6: 去重...  候选数: 5
+排除: 0  保留: 5
+阶段 4/6: 获取资料与分析...  待分析: 5
+  分析账号... ───────────────────────────── 5/5 0:00:01
+已分析: 3  已跳过: 2  错误: 0
+阶段 5/6: 导出结果...
+  CSV: output\creators_task_xxx.csv
+  JSON: output\creators_task_xxx.json
+  XLSX: output\creators_task_xxx.xlsx
+阶段 6/6: 任务完成
+```
+
+### 6.4 示例账号场景覆盖
+
+预定义的 10 个示例账号覆盖各种筛选结果（全部为虚构数据，不对应真实 Instagram 账号）：
+
+| 用户名 | 粉丝数 | 场景 | 预期结果 |
+|--------|--------|------|----------|
+| `perfumista_mexicana` | 85000 | 完美匹配，CDMX + 香水 + .mx 域名 + WhatsApp | A 级（≈96 分） |
+| `beauty_by_laura` | 124000 | 美妆博主，Guadalajara + Linktree | A 级（≈95 分） |
+| `skincare_merida` | 42000 | 护肤创作者，Mérida + Beacons | A 级（≈86 分） |
+| `moda_cdmx` | 67000 | 穿搭博主，无 Reels（信息不足） | 被跳过或低分 |
+| `small_creator_mx` | 8500 | 粉丝不足 20000 | 被跳过（粉丝筛选） |
+| `private_perfume_diary` | 35000 | 私密账号 | 被跳过（公开账号筛选） |
+| `perfume_brand_mx_oficial` | 180000 | 品牌账号 | 被排除（exclude_brands） |
+| `belleza_news_mx` | 220000 | 媒体账号 | 被排除（exclude_media_accounts） |
+| `old_perfume_blog` | 55000 | 停更 120 天 | 被跳过（停更筛选） |
+| `perfume_lover_us` | 95000 | 加州账号，无墨西哥信号 | 被跳过（墨西哥信号筛选） |
+
+### 6.5 验证导出文件
+
+dry-run 完成后，可在 `output/` 目录查看生成的文件：
+
+```powershell
+# 查看导出文件
+Get-ChildItem output\
+
+# 查看 JSON 结果
+Get-Content output\creators_task_*.json | Out-String
+
+# 用 Excel 打开 CSV
+Start-Process excel "output\creators_task_*.csv"
+```
+
+### 6.6 dry-run 与真实模式的差异
+
+| 方面 | dry-run 模式 | 真实模式 |
+|------|--------------|----------|
+| Instagram 登录 | 模拟，立即成功 | 真实登录或 Session 复用 |
+| Hashtag 媒体 | 预定义示例数据 | 真实 Instagram API |
+| 网络请求 | 无 | 有（受 4-8 秒间隔限制） |
+| 凭据要求 | 不需要 | 需要 `.env` 配置 |
+| 数据真实性 | 虚构示例 | 真实公开数据 |
+| 流程逻辑 | 完全一致 | 完全一致 |
+| 导出文件 | 真实生成 | 真实生成 |
+
+### 6.7 dry-run 的合规保证
+
+- ✅ 不登录真实 Instagram 账号
+- ✅ 不发起任何网络请求
+- ✅ 不调用 instagrapi 任何 API
+- ✅ 不绕过任何安全机制
+- ✅ 仅用于本地流程演示与测试
+- ✅ 示例数据全部为虚构，不对应真实账号
+
+---
+
+## 7. 单元测试运行
+
+### 7.1 运行全部测试
 
 ```powershell
 cd d:\桌面\ins\instagrapi\mexico-instagram-creator-finder
@@ -369,20 +477,20 @@ python -m pytest tests/
 预期结果：
 
 ```text
-============================ 246 passed in 13.63s =============================
+============================ 256 passed in 14.21s =============================
 ```
 
 > **重要**：所有测试使用 Mock / Fake Client，**不会**登录真实 Instagram 账号，**不会**发起任何网络请求。
 
-### 6.2 详细输出
+### 7.2 详细输出
 
 ```powershell
 python -m pytest tests/ -v --tb=short
 ```
 
-### 6.3 测试文件清单
+### 7.3 测试文件清单
 
-12 个测试文件，246 个测试用例：
+13 个测试文件，256 个测试用例：
 
 | 测试文件 | 用例数 | 覆盖模块 |
 |----------|--------|----------|
@@ -398,20 +506,21 @@ python -m pytest tests/ -v --tb=short
 | [test_storage.py](tests/test_storage.py) | 16 | `database.py` + `repositories.py`：SQLite 持久化、无密码列 |
 | [test_checkpoint.py](tests/test_checkpoint.py) | 20 | `checkpoint.py`：断点保存/恢复/重置 |
 | [test_exporters.py](tests/test_exporters.py) | 19 | `csv/json/excel_exporter.py`：UTF-8 BOM、中文不乱码、URL 可点击 |
+| [test_fake_client.py](tests/test_fake_client.py) | 10 | `fake_client.py`：dry-run 模式的 FakeInstagramClient |
 
-### 6.4 运行单个测试文件
-
-```powershell
-python -m pytest tests/test_mexico_detector.py -v
-```
-
-### 6.5 运行单个测试用例
+### 7.4 运行单个测试文件
 
 ```powershell
-python -m pytest tests/test_mexico_detector.py::test_only_mx_letters_not_enough -v
+python -m pytest tests/test_fake_client.py -v
 ```
 
-### 6.6 查看测试覆盖率（可选）
+### 7.5 运行单个测试用例
+
+```powershell
+python -m pytest tests/test_fake_client.py::test_fake_client_login_immediate_success -v
+```
+
+### 7.6 查看测试覆盖率（可选）
 
 如需安装覆盖率工具：
 
@@ -422,9 +531,9 @@ python -m pytest tests/ --cov=app --cov-report=term-missing
 
 ---
 
-## 7. 静态检查
+## 8. 静态检查
 
-### 7.1 Ruff 检查
+### 8.1 Ruff 检查
 
 ```powershell
 ruff check .
@@ -436,7 +545,7 @@ ruff check .
 All checks passed!
 ```
 
-### 7.2 Ruff 格式化检查
+### 8.2 Ruff 格式化检查
 
 ```powershell
 ruff format --check .
@@ -445,10 +554,10 @@ ruff format --check .
 预期输出：
 
 ```text
-46 files already formatted
+48 files already formatted
 ```
 
-### 7.3 自动修复与格式化
+### 8.3 自动修复与格式化
 
 如检查未通过，可执行：
 
@@ -460,7 +569,7 @@ ruff check --fix .
 ruff format .
 ```
 
-### 7.4 一键验证（推荐提交前执行）
+### 8.4 一键验证（推荐提交前执行）
 
 ```powershell
 python -m pytest tests/ ; ruff check . ; ruff format --check .
@@ -468,9 +577,9 @@ python -m pytest tests/ ; ruff check . ; ruff format --check .
 
 ---
 
-## 8. 任务状态与断点续传
+## 9. 任务状态与断点续传
 
-### 8.1 任务状态流转
+### 9.1 任务状态流转
 
 ```text
 running  ──┬──→ completed   （正常完成）
@@ -479,7 +588,7 @@ running  ──┬──→ completed   （正常完成）
            └──→ paused      （用户手动中断，未来版本支持）
 ```
 
-### 8.2 断点保存内容
+### 9.2 断点保存内容
 
 每完成一个关键步骤即保存到 SQLite：
 
@@ -490,7 +599,7 @@ running  ──┬──→ completed   （正常完成）
 - 当前任务状态
 - 停止原因
 
-### 8.3 恢复任务
+### 9.3 恢复任务
 
 ```powershell
 python main.py search --resume
@@ -502,7 +611,7 @@ python main.py search --resume
 3. 跳过已分析的账号（不重复调用 `user_info`/`user_medias`）
 4. 保留已发现的候选与已排除账号
 
-### 8.4 查看任务详情
+### 9.4 查看任务详情
 
 ```powershell
 # 列出最近 5 个任务
@@ -512,7 +621,7 @@ python main.py task-status
 python main.py task-status --task-id <TASK_ID>
 ```
 
-### 8.5 重置任务
+### 9.5 重置任务
 
 ```powershell
 python main.py search --reset-task
@@ -522,13 +631,13 @@ python main.py search --reset-task
 
 ---
 
-## 9. 导出文件说明
+## 10. 导出文件说明
 
-### 9.1 输出位置
+### 10.1 输出位置
 
-`output/` 目录，文件名格式：`<task_id>_creators.<ext>`
+`output/` 目录，文件名格式：`creators_<task_id>.<ext>`
 
-### 9.2 支持格式
+### 10.2 支持格式
 
 | 格式 | 特性 |
 |------|------|
@@ -536,7 +645,7 @@ python main.py search --reset-task
 | JSON | `ensure_ascii=False`、`indent=2`、保留 Unicode 原字符 |
 | XLSX | openpyxl、字段宽度合理、长文本自动换行、URL 可点击、冻结首行 |
 
-### 9.3 导出字段（47 列）
+### 10.3 导出字段（47 列）
 
 完整字段见 [app/export/common.py](app/export/common.py) 的 `EXPORT_FIELDS`，主要包括：
 
@@ -549,13 +658,13 @@ python main.py search --reset-task
 - 评分：total_score / score_breakdown / recommendation_level / recommendation_reasons
 - 来源：source_hashtags / discovered_at / collected_at
 
-### 9.4 默认排序
+### 10.4 默认排序
 
 1. `total_score` 降序
 2. `median_visible_reel_views` 降序
 3. `follower_count` 降序
 
-### 9.5 安全保证
+### 10.5 安全保证
 
 导出文件**不包含**：
 - 密码
@@ -566,9 +675,9 @@ python main.py search --reset-task
 
 ---
 
-## 10. 停止原因与异常处理
+## 11. 停止原因与异常处理
 
-### 10.1 安全停止（退出码 2）
+### 11.1 安全停止（退出码 2）
 
 遇以下异常立即停止并保存断点：
 
@@ -588,15 +697,15 @@ python main.py search --reset-task
 
 恢复方式：**不自动重试**。需在官方 Instagram App 完成验证后用 `--resume` 恢复。
 
-### 10.2 Instagram 调用失败（退出码 3）
+### 11.2 Instagram 调用失败（退出码 3）
 
 网络错误等可重试异常重试 2 次后仍失败时退出。
 
-### 10.3 其他运行失败（退出码 4）
+### 11.3 其他运行失败（退出码 4）
 
 配置错误、文件读写错误等。
 
-### 10.4 配置错误（退出码 1）
+### 11.4 配置错误（退出码 1）
 
 `validate-config` 或 `search` 启动时校验失败。
 
@@ -606,7 +715,19 @@ python main.py search --reset-task
 
 ### Q1：没有 Instagram 账号可以测试吗？
 
-可以运行全部 246 个单元测试（`pytest tests/`），测试使用 Mock/Fake Client，**不**需要真实账号也不发起网络请求。
+可以。有两种方式：
+
+1. **运行 dry-run 模式**（推荐，端到端流程演示）：
+   ```powershell
+   python main.py search --dry-run
+   ```
+   使用预定义的 10 个示例账号跑完整 6 阶段流程，生成真实的 CSV/JSON/XLSX 导出文件。详见第 6 章。
+
+2. **运行单元测试**（覆盖所有业务逻辑）：
+   ```powershell
+   python -m pytest tests/
+   ```
+   256 个测试用例使用 Mock/Fake Client，不需要真实账号也不发起网络请求。详见第 7 章。
 
 ### Q2：为什么默认粉丝区间是 20000-300000？
 
@@ -700,6 +821,7 @@ mexico-instagram-creator-finder/
 
 ---
 
-**最后更新**：2026-07-18  
-**项目版本**：0.1.0  
-**测试状态**：246 passed / ruff check passed / ruff format check passed
+**最后更新**：2026-07-18
+**项目版本**：0.1.0
+**测试状态**：256 passed / ruff check passed / ruff format check passed
+**dry-run**：已支持（`python main.py search --dry-run`）
