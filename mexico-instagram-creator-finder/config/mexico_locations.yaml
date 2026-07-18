@@ -1,0 +1,115 @@
+country: Mexico
+country_aliases:
+  - México
+  - MX
+  - Mexicano
+  - Mexican
+states:
+  - name: Aguascalientes
+    aliases: [AGS, Ags]
+    cities: [Aguascalientes, Jesús María, San Francisco de los Romo]
+  - name: Baja California
+    aliases: [BC, Baja California Norte]
+    cities: [Tijuana, Mexicali, Ensenada, Rosarito, Tecate]
+  - name: Baja California Sur
+    aliases: [BCS]
+    cities: [La Paz, Los Cabos, Cabo San Lucas, San José del Cabo, Loreto]
+  - name: Campeche
+    aliases: [CAMP, Camp]
+    cities: [Campeche, Ciudad del Carmen, Champotón, Escárcega]
+  - name: Chiapas
+    aliases: [CHIS, Chis]
+    cities: [Tuxtla Gutiérrez, San Cristóbal de las Casas, Tapachula, Palenque, Comitán]
+  - name: Chihuahua
+    aliases: [CHIH, Chih]
+    cities: [Chihuahua, Ciudad Juárez, Cuauhtémoc, Delicias, Parral]
+  - name: Coahuila de Zaragoza
+    aliases: [COAH, Coahuila]
+    cities: [Saltillo, Torreón, Monclova, Piedras Negras, Ramos Arizpe]
+  - name: Colima
+    aliases: [COL, Col]
+    cities: [Colima, Manzanillo, Tecomán, Villa de Álvarez]
+  - name: Ciudad de México
+    aliases: [CDMX, Mexico City, D.F., Distrito Federal, CDMX]
+    cities: [Polanco, Roma Norte, Condesa, Coyoacán, Santa Fe, Del Valle, Narvarte, San Ángel, Tlalpan, Xochimilco]
+  - name: Durango
+    aliases: [DGO, Dgo]
+    cities: [Durango, Gómez Palacio, Lerdo, Santiago Papasquiaro]
+  - name: México
+    aliases: [EDOMEX, Estado de México, Edo. Méx., Edo Mex]
+    cities: [Ecatepec, Toluca, Ciudad López Mateos, Naucalpan, Tlalnepantla, Cuautitlán, Valle de Bravo, Metepec, Ixtapaluca]
+  - name: Guanajuato
+    aliases: [GTO, Gto]
+    cities: [Guanajuato, León, Irapuato, Celaya, Salamanca, San Miguel de Allende, Silao]
+  - name: Guerrero
+    aliases: [GRO, Gro]
+    cities: [Chilpancingo, Acapulco, Zihuatanejo, Iguala, Taxco, Chilapa]
+  - name: Hidalgo
+    aliases: [HGO, Hgo]
+    cities: [Pachuca, Tula, Tulancingo, Ixmiquilpan, Huejutla]
+  - name: Jalisco
+    aliases: [JAL, Jal]
+    cities: [Guadalajara, Zapopan, Puerto Vallarta, Tlaquepaque, Tonalá, Tlajomulco, Lagos de Moreno]
+  - name: Michoacán de Ocampo
+    aliases: [MICH, Michoacán, Mich]
+    cities: [Morelia, Uruapan, Lázaro Cárdenas, Pátzcuaro, Zamora, Apatzingán]
+  - name: Morelos
+    aliases: [MOR, Mor]
+    cities: [Cuernavaca, Cuautla, Jiutepec, Yautepec, Jojutla]
+  - name: Nayarit
+    aliases: [NAY, Nay]
+    cities: [Tepic, Xalisco, Compostela, Bahía de Banderas, Sayulita, Nuevo Vallarta, San Blas]
+  - name: Nuevo León
+    aliases: [NL, N.L.]
+    cities: [Monterrey, San Pedro Garza García, Guadalupe, Apodaca, San Nicolás de los Garza, Escobedo, Santa Catarina]
+  - name: Oaxaca
+    aliases: [OAX, Oax]
+    cities: [Oaxaca de Juárez, Salina Cruz, Puerto Escondido, Huatulco, Tehuantepec, Juchitán, Tuxtepec]
+  - name: Puebla
+    aliases: [PUE, Pue]
+    cities: [Puebla, Tehuacán, Cholula, Atlixco, San Martín Texmelucan]
+  - name: Querétaro
+    aliases: [QRO, Qro]
+    cities: [Santiago de Querétaro, San Juan del Río, Corregidora, Juriquilla, Tequisquiapan]
+  - name: Quintana Roo
+    aliases: [QR, Q.R., Q Roo]
+    cities: [Chetumal, Cancún, Playa del Carmen, Tulum, Cozumel, Isla Mujeres, Felipe Carrillo Puerto]
+  - name: San Luis Potosí
+    aliases: [SLP, S.L.P.]
+    cities: [San Luis Potosí, Soledad de Graciano Sánchez, Matehuala, Río Verde, Ciudad Valles]
+  - name: Sinaloa
+    aliases: [SIN, Sin]
+    cities: [Culiacán, Mazatlán, Los Mochis, Guasave, Navolato]
+  - name: Sonora
+    aliases: [SON, Son]
+    cities: [Hermosillo, Ciudad Obregón, Nogales, Guaymas, Navojoa, San Luis Río Colorado]
+  - name: Tabasco
+    aliases: [TAB, Tab]
+    cities: [Villahermosa, Cárdenas, Comalcalco, Paraíso, Tenosique]
+  - name: Tamaulipas
+    aliases: [TAMPS, Tamps]
+    cities: [Victoria, Tampico, Reynosa, Matamoros, Nuevo Laredo, Ciudad Madero]
+  - name: Tlaxcala
+    aliases: [TLAX, Tlax]
+    cities: [Tlaxcala, Apizaco, Chiautempan, Huamantla, Zacatelco]
+  - name: Veracruz de Ignacio de la Llave
+    aliases: [VER, Ver, Veracruz]
+    cities: [Xalapa, Veracruz, Poza Rica, Córdoba, Orizaba, Boca del Río, Coatzacoalcos, Tuxpan, Minatitlán]
+  - name: Yucatán
+    aliases: [YUC, Yuc]
+    cities: [Mérida, Valladolid, Progreso, Tizimín, Izamal]
+  - name: Zacatecas
+    aliases: [ZAC, Zac]
+    cities: [Zacatecas, Fresnillo, Guadalupe, Jerez, Río Grande]
+mexican_hashtags:
+  - mexicano
+  - mexicana
+  - mexico
+  - mxcity
+  - cdmx
+  - guadalajara
+  - monterrey
+  - madeinmexico
+  - hechenmexico
+  - orgullosamentemexicano
+phone_country_code: "+52"

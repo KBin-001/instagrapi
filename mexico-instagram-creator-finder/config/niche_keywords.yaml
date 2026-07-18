@@ -1,0 +1,83 @@
+niches:
+  perfume:
+    keywords:
+      - perfume
+      - perfumes
+      - fragancia
+      - fragancias
+      - perfume sólido
+      - perfumessolidos
+      - eau de parfum
+      - eau de toilette
+      - aromas
+      - olfativo
+    hashtags:
+      - perfumemexico
+      - perfumesmexico
+      - fraganciasmexico
+      - perfumesdemujer
+      - perfumessolidos
+  beauty:
+    keywords:
+      - belleza
+      - beauty
+      - belleza mexicana
+      - cosmetic
+      - cosméticos
+    hashtags:
+      - bellezamexicana
+      - bellezamexico
+      - beautybloggermexico
+  skincare:
+    keywords:
+      - skincare
+      - cuidado de la piel
+      - piel
+      - rutina skincare
+      - hidratante
+      - protector solar
+    hashtags:
+      - skincaremexico
+      - cuidadodelapielmx
+  makeup:
+    keywords:
+      - maquillaje
+      - makeup
+      - labial
+      - base de maquillaje
+      - sombra
+      - delineado
+    hashtags:
+      - maquillajemexico
+  fashion:
+    keywords:
+      - moda
+      - fashion
+      - outfit
+      - look del día
+      - styling
+      - pasarela
+    hashtags:
+      - modamexicana
+  lifestyle:
+    keywords:
+      - lifestyle
+      - estilo de vida
+      - vida diaria
+      - rutina
+      - morning routine
+      - self care
+    hashtags:
+      - lifestylemexico
+      - mexicoblogger
+  UGC:
+    keywords:
+      - UGC
+      - user generated content
+      - creador de contenido
+      - creadora de contenido
+      - content creator
+    hashtags:
+      - ugcmexico
+      - creadoradecontenidomx
+      - bloggeramexicana

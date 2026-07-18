@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mexico-instagram-creator-finder"
+version = "0.1.0"
+description = "Mexico Instagram Creator Finder - 墨西哥 Instagram 内容创作者发现工具"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Mexico Instagram Creator Finder Contributors" },
+]
+keywords = ["instagram", "mexico", "creator", "discovery", "research"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Intended Audience :: Developers",
+    "Development Status :: 2 - Pre-Alpha",
+]
+dependencies = [
+    "instagrapi>=2.18.8,<3",
+    "typer>=0.12,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.3,<3",
+    "sqlalchemy>=2.0,<3",
+    "pandas>=2.2,<3",
+    "openpyxl>=3.1,<4",
+    "rich>=13.7,<14",
+    "pyyaml>=6.0,<7",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "ruff>=0.5,<1",
+]
+
+[project.scripts]
+mexico-finder = "app.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["tests*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

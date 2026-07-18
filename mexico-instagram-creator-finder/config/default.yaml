@@ -1,0 +1,41 @@
+instagram:
+  session_file: ".instagram_session.json"
+  request_delay_min_seconds: 4
+  request_delay_max_seconds: 8
+  retry_network_errors: 2
+  stop_on_rate_limit: true
+  stop_on_challenge: true
+
+discovery:
+  max_hashtags: 15
+  media_per_hashtag: 20
+  max_candidates: 300
+  max_profiles_to_analyze: 100
+  seed_expansion_depth: 1
+  max_accounts_per_seed: 20
+
+filters:
+  min_followers: 20000
+  max_followers: 300000
+  require_public_account: true
+  require_mexico_signal: true
+  maximum_days_since_last_post: 90
+  minimum_recent_media_count: 3
+  minimum_median_reel_views: 2000
+  exclude_brands: true
+  exclude_media_accounts: true
+
+analysis:
+  recent_media_amount: 12
+  maximum_caption_length: 3000
+
+checkpoint:
+  enabled: true
+  database_file: "data/app.db"
+
+output:
+  directory: "output"
+  formats:
+    - csv
+    - json
+    - xlsx
