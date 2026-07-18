@@ -118,14 +118,13 @@ class FakeMedia:
 # 账号 1：完美匹配的墨西哥香水创作者 → A 级
 _user_perfumista = FakeUser(
     pk="1001",
-    username="perfumista_mexicana",
-    full_name="Sofía Martínez · Perfumista",
+    username="xiangshui_cdmx",
+    full_name="苏菲雅 · 香水测评",
     biography=(
-        "Perfumista CDMH 🇲🇽\n"
-        "Reseñas de perfumes y fragancias\n"
-        "Colaboraciones: contacto@perfumistamx.com\n"
-        "WhatsApp: https://wa.me/525512345678\n"
-        "Ciudad de México"
+        "香水测评师 🇲🇽\n"
+        "驻地：墨西哥城 CDMX, México\n"
+        "合作邮箱：contacto@xiangshuimx.com\n"
+        "WhatsApp: https://wa.me/525512345678"
     ),
     follower_count=85000,
     following_count=432,
@@ -133,18 +132,16 @@ _user_perfumista = FakeUser(
     is_private=False,
     is_verified=False,
     is_business=False,
-    external_url="https://perfumistamx.com.mx",
-    public_email="contacto@perfumistamx.com",
+    external_url="https://xiangshuimx.com.mx",
+    public_email="contacto@xiangshuimx.com",
 )
 
 # 账号 2：墨西哥美妆博主 → B 级
 _user_beauty_laura = FakeUser(
     pk="1002",
-    username="beauty_by_laura",
-    full_name="Laura González",
-    biography=(
-        "Maquilladora profesional 💄\nGuadalajara, Jalisco 🇲🇽\nBlogger de belleza y skincare\ncontacto@laurabeauty.mx"
-    ),
+    username="meizhuang_laura",
+    full_name="劳拉 · 美妆教程",
+    biography=("专业化妆师 💄\n瓜达拉哈拉 Guadalajara, Jalisco 🇲🇽\n美妆与护肤博主\ncontacto@laurabeauty.mx"),
     follower_count=124000,
     following_count=689,
     media_count=567,
@@ -159,23 +156,23 @@ _user_beauty_laura = FakeUser(
 # 账号 3：护肤创作者 → B 级
 _user_skincare_merida = FakeUser(
     pk="1003",
-    username="skincare_merida",
-    full_name="Camila Rivera · Skincare",
-    biography=("Skincare routine & tips 🌿\nMérida, Yucatán 🇲🇽\nProduct reviews & rutinas\nwa.me/529991234567"),
+    username="hufu_merida",
+    full_name="卡米拉 · 护肤分享",
+    biography=("护肤步骤与心得 🌿\n梅里达 Mérida, Yucatán 🇲🇽\n产品测评与日常护肤\nwa.me/529991234567"),
     follower_count=42000,
     following_count=312,
     media_count=189,
     is_private=False,
     is_business=False,
-    external_url="https://beacons.ai/skincaremerida",
+    external_url="https://beacons.ai/hufumerida",
 )
 
 # 账号 4：穿搭创作者 → C 级（信息不足）
 _user_moda_cdmx = FakeUser(
     pk="1004",
-    username="moda_cdmx",
-    full_name="Daniela Torres",
-    biography="Fashion blogger | CDMX |穿搭分享",
+    username="chuanda_cdmx",
+    full_name="丹妮拉 · 穿搭日记",
+    biography="穿搭博主 | CDMX | México 穿搭分享",
     follower_count=67000,
     following_count=521,
     media_count=234,
@@ -187,9 +184,9 @@ _user_moda_cdmx = FakeUser(
 # 账号 5：粉丝不足 → 被跳过
 _user_small_followers = FakeUser(
     pk="1005",
-    username="small_creator_mx",
-    full_name="María López",
-    biography="Perfume lover en Monterrey 🇲🇽",
+    username="xiaoshizi_mx",
+    full_name="玛丽亚 · 香水爱好者",
+    biography="香水爱好者 in Monterrey 🇲🇽",
     follower_count=8500,  # 低于 min_followers=20000
     following_count=201,
     media_count=67,
@@ -200,9 +197,9 @@ _user_small_followers = FakeUser(
 # 账号 6：私密账号 → 被跳过
 _user_private_account = FakeUser(
     pk="1006",
-    username="private_perfume_diary",
-    full_name="Ana Hernández",
-    biography="Cuenta privada",
+    username="private_xiangshui_riji",
+    full_name="安娜 · 香水日记",
+    biography="私密账号",
     follower_count=35000,
     following_count=445,
     media_count=89,
@@ -213,40 +210,40 @@ _user_private_account = FakeUser(
 # 账号 7：品牌账号 → 被排除
 _user_brand_oficial = FakeUser(
     pk="1007",
-    username="perfume_brand_mx_oficial",
-    full_name="PerfumeBrand México Oficial",
-    biography=("Tienda oficial de perfumes\nEnvíos a todo México 🇲🇽\nCompras: tienda@perfumebrand.mx"),
+    username="xiangshui_pinpai_mx",
+    full_name="香水品牌墨西哥官方",
+    biography=("香水官方店铺\n全墨西哥发货 🇲🇽\n购买：tienda@xiangshuipinpai.mx"),
     follower_count=180000,
     following_count=12,
     media_count=456,
     is_private=False,
     is_business=True,
     category_name="Shopping & Retail",
-    external_url="https://perfumebrand.mx",
-    public_email="tienda@perfumebrand.mx",
+    external_url="https://xiangshuipinpai.mx",
+    public_email="tienda@xiangshuipinpai.mx",
 )
 
 # 账号 8：媒体账号 → 被排除
 _user_media_news = FakeUser(
     pk="1008",
-    username="belleza_news_mx",
-    full_name="Belleza News México",
-    biography="Medio de belleza y tendencias 🇲🇽",
+    username="meizhuang_news_mx",
+    full_name="美妆新闻墨西哥",
+    biography="美妆与潮流媒体 🇲🇽",
     follower_count=220000,
     following_count=34,
     media_count=1234,
     is_private=False,
     is_business=True,
     category_name="Media/News Company",
-    external_url="https://bellezanews.mx",
+    external_url="https://meizhuangnews.mx",
 )
 
 # 账号 9：停更账号 → 被跳过
 _user_inactive = FakeUser(
     pk="1009",
-    username="old_perfume_blog",
-    full_name="Perfume Blog MX",
-    biography="Blog de perfumes (inactivo)",
+    username="jiu_xiangshui_blog",
+    full_name="香水博客 MX",
+    biography="香水博客（停更）",
     follower_count=55000,
     following_count=123,
     media_count=78,
@@ -257,8 +254,8 @@ _user_inactive = FakeUser(
 # 账号 10：无墨西哥信号 → 被跳过
 _user_non_mexico = FakeUser(
     pk="1010",
-    username="perfume_lover_us",
-    full_name="Emma Wilson",
+    username="xiangshui_lover_us",
+    full_name="艾玛 · 香水测评",
     biography="Perfume reviewer from California ✨",
     follower_count=95000,
     following_count=234,
@@ -296,7 +293,7 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
     """为指定账号生成 8-12 条近期内容。"""
     username = user.username
 
-    if username == "perfumista_mexicana":
+    if username == "xiangshui_cdmx":
         # 完美：8 条 Reels，播放量都很高
         return [
             FakeMedia(
@@ -308,12 +305,12 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 media_type=2,
                 product_type="clips",
                 view_count=12000 + i * 800,
-                caption_text=f"Reseña del perfume #{i} #perfumemexico #fragancias #cdmx",
+                caption_text=f"香水测评 #{i} #perfumemexico #fragancias #cdmx",
             )
             for i in range(1, 9)
         ]
 
-    if username == "beauty_by_laura":
+    if username == "meizhuang_laura":
         # 美妆：10 条混合内容，部分 Reels 有播放量
         medias: list[FakeMedia] = []
         for i in range(1, 11):
@@ -328,12 +325,12 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                     media_type=2 if is_reel else 1,
                     product_type="clips" if is_reel else None,
                     view_count=8500 + i * 600 if is_reel else None,
-                    caption_text=f"Tutorial de maquillaje #{i} #makeupmx #belleza #guadalajara",
+                    caption_text=f"美妆教程 #{i} #makeupmx #belleza #guadalajara",
                 )
             )
         return medias
 
-    if username == "skincare_merida":
+    if username == "hufu_merida":
         # 护肤：6 条 Reels，播放量中等
         return [
             FakeMedia(
@@ -345,12 +342,12 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 media_type=2,
                 product_type="clips",
                 view_count=3200 + i * 250,
-                caption_text=f"Rutina de skincare #{i} #skincare #merida #yucatan",
+                caption_text=f"护肤步骤 #{i} #skincare #merida #yucatan",
             )
             for i in range(1, 7)
         ]
 
-    if username == "moda_cdmx":
+    if username == "chuanda_cdmx":
         # 穿搭：5 条内容，无 Reels（信息不足）
         return [
             FakeMedia(
@@ -360,12 +357,12 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 comment_count=55 + i * 2,
                 taken_at=_days_ago(i * 5),
                 media_type=1,
-                caption_text=f"Outfit del día #{i} #moda #cdmx",
+                caption_text=f"今日穿搭 #{i} #moda #cdmx",
             )
             for i in range(1, 6)
         ]
 
-    if username == "small_followers":
+    if username == "xiaoshizi_mx":
         return [
             FakeMedia(
                 pk=f"{user.pk}_m{i}",
@@ -376,15 +373,15 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 media_type=2,
                 product_type="clips",
                 view_count=500 + i * 50,
-                caption_text=f"Mi perfume favorito #{i}",
+                caption_text=f"我最爱的香水 #{i} #perfume",
             )
             for i in range(1, 6)
         ]
 
-    if username == "private_account":
+    if username == "private_xiangshui_riji":
         return []
 
-    if username == "perfume_brand_mx_oficial":
+    if username == "xiangshui_pinpai_mx":
         return [
             FakeMedia(
                 pk=f"{user.pk}_m{i}",
@@ -393,12 +390,12 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 comment_count=20 + i,
                 taken_at=_days_ago(i * 2),
                 media_type=1,
-                caption_text=f"Producto en venta #{i} #tienda #mexico",
+                caption_text=f"在售商品 #{i} #tienda #mexico",
             )
             for i in range(1, 8)
         ]
 
-    if username == "belleza_news_mx":
+    if username == "meizhuang_news_mx":
         return [
             FakeMedia(
                 pk=f"{user.pk}_m{i}",
@@ -409,12 +406,12 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 media_type=2,
                 product_type="clips",
                 view_count=15000 + i * 500,
-                caption_text=f"Noticia de belleza #{i} #belleza #news",
+                caption_text=f"美妆新闻 #{i} #belleza #news",
             )
             for i in range(1, 9)
         ]
 
-    if username == "old_perfume_blog":
+    if username == "jiu_xiangshui_blog":
         # 停更：最后一条发布于 120 天前
         return [
             FakeMedia(
@@ -424,12 +421,12 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 comment_count=30 + i,
                 taken_at=_days_ago(120 + i * 10),  # 全部超过 90 天
                 media_type=1,
-                caption_text=f"Reseña antigua #{i}",
+                caption_text=f"旧版香水测评 #{i}",
             )
             for i in range(1, 5)
         ]
 
-    if username == "perfume_lover_us":
+    if username == "xiangshui_lover_us":
         return [
             FakeMedia(
                 pk=f"{user.pk}_m{i}",
@@ -440,7 +437,7 @@ def _make_medias_for(user: FakeUser) -> list[FakeMedia]:
                 media_type=2,
                 product_type="clips",
                 view_count=11000 + i * 700,
-                caption_text=f"Perfume review #{i} #perfume #california",
+                caption_text=f"香水测评 #{i} #perfume #california",
             )
             for i in range(1, 9)
         ]
@@ -523,7 +520,7 @@ class FakeInstagramClient:
                 pk="9999",
                 username=username,
                 full_name=username.replace("_", " ").title(),
-                biography="Cuenta de ejemplo",
+                biography="示例账号",
                 follower_count=30000,
                 following_count=200,
                 media_count=100,

@@ -4,6 +4,7 @@
 - 长文本自动换行
 - URL 字段可点击（hyperlink）
 - 冻结首行表头
+- 表头使用「中文 (english)」双语格式
 不导出密码、Cookie 或 Session。
 """
 
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.export.common import records_to_rows
+from app.export.common import EXPORT_FIELDS, get_header_labels, records_to_rows
 from app.logging_config import get_logger
 from app.models import CreatorRecord
 
@@ -36,6 +37,7 @@ def export_xlsx(records: list[CreatorRecord], output_path: str | Path) -> Path:
     - 字段宽度合理（根据内容长度自动调整，上限 50）
     - 长文本自动换行
     - URL 字段可点击（hyperlink）
+    - 表头使用「中文 (english)」双语格式
 
     Args:
         records: 已排序的 CreatorRecord 列表
@@ -51,17 +53,18 @@ def export_xlsx(records: list[CreatorRecord], output_path: str | Path) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows, fieldnames = records_to_rows(records)
+    rows, _fieldnames = records_to_rows(records)
+    header_labels = get_header_labels(EXPORT_FIELDS)
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Creators"
 
-    # 表头
+    # 双语表头
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="4F81BD")
-    for col_idx, field in enumerate(fieldnames, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=field)
+    for col_idx, label in enumerate(header_labels, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -71,7 +74,7 @@ def export_xlsx(records: list[CreatorRecord], output_path: str | Path) -> Path:
     link_font = Font(color="0563C1", underline="single")
 
     for row_idx, row in enumerate(rows, start=2):
-        for col_idx, field in enumerate(fieldnames, start=1):
+        for col_idx, field in enumerate(EXPORT_FIELDS, start=1):
             value = row.get(field, "")
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.alignment = wrap_alignment
@@ -81,8 +84,9 @@ def export_xlsx(records: list[CreatorRecord], output_path: str | Path) -> Path:
                 cell.font = link_font
 
     # 列宽自动调整（10 ~ 50）
-    for col_idx, field in enumerate(fieldnames, start=1):
-        max_len = len(str(field))
+    for col_idx, label in enumerate(header_labels, start=1):
+        max_len = len(str(label))
+        field = EXPORT_FIELDS[col_idx - 1]
         for row in rows:
             v = row.get(field, "")
             if v is not None:

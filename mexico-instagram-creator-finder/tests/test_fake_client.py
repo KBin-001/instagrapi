@@ -35,8 +35,8 @@ def test_fake_client_user_info_returns_profile() -> None:
     """user_info_by_username 返回 ProfileData。"""
     client = FakeInstagramClient()
     client.login_from_env()
-    profile = client.user_info_by_username("perfumista_mexicana")
-    assert profile.username == "perfumista_mexicana"
+    profile = client.user_info_by_username("xiangshui_cdmx")
+    assert profile.username == "xiangshui_cdmx"
     assert profile.follower_count == 85000
     assert profile.is_private is False
     assert "méxico" in (profile.biography or "").lower()
@@ -55,9 +55,9 @@ def test_fake_client_user_medias_returns_list() -> None:
     """user_medias 返回该用户的近期内容列表。"""
     client = FakeInstagramClient()
     client.login_from_env()
-    medias = client.user_medias("perfumista_mexicana", amount=12)
+    medias = client.user_medias("xiangshui_cdmx", amount=12)
     assert len(medias) > 0
-    # perfumista_mexicana 预定义 8 条 Reels
+    # xiangshui_cdmx 预定义 8 条 Reels
     assert all(m.media_type == 2 for m in medias)
     assert all(m.view_count is not None for m in medias)
 
@@ -66,24 +66,24 @@ def test_fake_client_user_medias_empty_for_private() -> None:
     """私密账号返回空 media 列表。"""
     client = FakeInstagramClient()
     client.login_from_env()
-    medias = client.user_medias("private_perfume_diary", amount=12)
+    medias = client.user_medias("private_xiangshui_riji", amount=12)
     assert medias == []
 
 
 def test_fake_client_covers_various_scenarios() -> None:
     """示例数据覆盖多种筛选场景。"""
     # 完美匹配
-    assert "perfumista_mexicana" in _ALL_USERS
+    assert "xiangshui_cdmx" in _ALL_USERS
     # 粉丝不足
-    assert _ALL_USERS["small_creator_mx"].follower_count < 20000
+    assert _ALL_USERS["xiaoshizi_mx"].follower_count < 20000
     # 私密账号
-    assert _ALL_USERS["private_perfume_diary"].is_private is True
+    assert _ALL_USERS["private_xiangshui_riji"].is_private is True
     # 品牌账号
-    assert _ALL_USERS["perfume_brand_mx_oficial"].is_business is True
+    assert _ALL_USERS["xiangshui_pinpai_mx"].is_business is True
     # 媒体账号
-    assert _ALL_USERS["belleza_news_mx"].category_name == "Media/News Company"
+    assert _ALL_USERS["meizhuang_news_mx"].category_name == "Media/News Company"
     # 无墨西哥信号
-    assert "perfume_lover_us" in _ALL_USERS
+    assert "xiangshui_lover_us" in _ALL_USERS
 
 
 def test_fake_client_mappers_compatible() -> None:
@@ -108,8 +108,8 @@ def test_fake_client_map_user_to_profile() -> None:
     """FakeUser 与 map_user_to_profile 完全兼容。"""
     client = FakeInstagramClient()
     client.login_from_env()
-    profile = client.user_info_by_username("beauty_by_laura")
-    assert profile.full_name == "Laura González"
+    profile = client.user_info_by_username("meizhuang_laura")
+    assert profile.full_name == "劳拉 · 美妆教程"
     assert profile.category_name == "Beauty & Makeup"
     assert profile.external_url == "https://linktr.ee/laurabeauty"
 

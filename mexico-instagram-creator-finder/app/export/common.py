@@ -61,6 +61,74 @@ EXPORT_FIELDS: list[str] = [
     "source_hashtags",
 ]
 
+# 字段中文标签（CSV/XLSX 表头使用「中文 (english)」格式；JSON 保持英文 key）
+EXPORT_FIELD_LABELS: dict[str, str] = {
+    "username": "用户名",
+    "full_name": "完整姓名",
+    "profile_url": "主页链接",
+    "follower_count": "粉丝数",
+    "following_count": "关注数",
+    "media_count": "帖子数",
+    "is_private": "是否私密",
+    "is_verified": "是否认证",
+    "is_business": "是否企业号",
+    "category_name": "类目名称",
+    "business_category_name": "商业类目",
+    "biography": "个人简介",
+    "external_url": "外部链接",
+    "profile_pic_url": "头像链接",
+    "public_email": "公开邮箱",
+    "public_whatsapp_url": "WhatsApp链接",
+    "linktree_url": "Linktree链接",
+    "beacons_url": "Beacons链接",
+    "has_public_contact": "有公开联系方式",
+    "contact_source": "联系方式来源",
+    "detected_country": "识别国家",
+    "detected_state": "识别州",
+    "detected_city": "识别城市",
+    "mexico_confidence_score": "墨西哥可信度",
+    "mexico_signals": "墨西哥信号",
+    "primary_niche": "主要垂类",
+    "niche_scores": "垂类评分",
+    "account_type": "账号类型",
+    "account_type_confidence": "账号类型可信度",
+    "recent_media_checked": "近期内容数",
+    "recent_reels_checked": "近期Reels数",
+    "last_post_date": "最后发布时间",
+    "days_since_last_post": "停更天数",
+    "average_likes": "平均点赞",
+    "median_likes": "点赞中位数",
+    "average_comments": "平均评论",
+    "median_comments": "评论中位数",
+    "average_visible_reel_views": "平均Reels播放",
+    "median_visible_reel_views": "Reels播放中位数",
+    "maximum_visible_reel_views": "最高Reels播放",
+    "posting_frequency": "发布频率",
+    "reels_view_data_available": "Reels播放数据状态",
+    "total_score": "总评分",
+    "score_breakdown": "评分明细",
+    "recommendation_level": "推荐级别",
+    "recommendation_reasons": "推荐理由",
+    "source_hashtags": "来源Hashtag",
+}
+
+
+def get_field_label(field: str) -> str:
+    """获取字段的中英文对照表头：返回「中文 (english)」格式。
+
+    若字段无中文映射，则仅返回英文 key。
+    """
+    zh = EXPORT_FIELD_LABELS.get(field)
+    if zh:
+        return f"{zh} ({field})"
+    return field
+
+
+def get_header_labels(fields: list[str] | None = None) -> list[str]:
+    """批量获取表头标签，默认对 EXPORT_FIELDS 转换。"""
+    target = fields if fields is not None else EXPORT_FIELDS
+    return [get_field_label(f) for f in target]
+
 
 def sort_records(records: list[CreatorRecord]) -> list[CreatorRecord]:
     """

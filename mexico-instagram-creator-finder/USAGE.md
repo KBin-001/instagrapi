@@ -416,16 +416,16 @@ python main.py search --dry-run --hashtags perfumemexico --hashtags bellezamx --
 
 | 用户名 | 粉丝数 | 场景 | 预期结果 |
 |--------|--------|------|----------|
-| `perfumista_mexicana` | 85000 | 完美匹配，CDMX + 香水 + .mx 域名 + WhatsApp | A 级（≈96 分） |
-| `beauty_by_laura` | 124000 | 美妆博主，Guadalajara + Linktree | A 级（≈95 分） |
-| `skincare_merida` | 42000 | 护肤创作者，Mérida + Beacons | A 级（≈86 分） |
-| `moda_cdmx` | 67000 | 穿搭博主，无 Reels（信息不足） | 被跳过或低分 |
-| `small_creator_mx` | 8500 | 粉丝不足 20000 | 被跳过（粉丝筛选） |
-| `private_perfume_diary` | 35000 | 私密账号 | 被跳过（公开账号筛选） |
-| `perfume_brand_mx_oficial` | 180000 | 品牌账号 | 被排除（exclude_brands） |
-| `belleza_news_mx` | 220000 | 媒体账号 | 被排除（exclude_media_accounts） |
-| `old_perfume_blog` | 55000 | 停更 120 天 | 被跳过（停更筛选） |
-| `perfume_lover_us` | 95000 | 加州账号，无墨西哥信号 | 被跳过（墨西哥信号筛选） |
+| `xiangshui_cdmx` | 85000 | 完美匹配，CDMX + 香水 + .mx 域名 + WhatsApp | A 级（≈96 分） |
+| `meizhuang_laura` | 124000 | 美妆博主，Guadalajara + Linktree | A 级（≈95 分） |
+| `hufu_merida` | 42000 | 护肤创作者，Mérida + Beacons | A 级（≈86 分） |
+| `chuanda_cdmx` | 67000 | 穿搭博主，无 Reels（信息不足） | 被跳过或低分 |
+| `xiaoshizi_mx` | 8500 | 粉丝不足 20000 | 被跳过（粉丝筛选） |
+| `private_xiangshui_riji` | 35000 | 私密账号 | 被跳过（公开账号筛选） |
+| `xiangshui_pinpai_mx` | 180000 | 品牌账号 | 被排除（exclude_brands） |
+| `meizhuang_news_mx` | 220000 | 媒体账号 | 被排除（exclude_media_accounts） |
+| `jiu_xiangshui_blog` | 55000 | 停更 120 天 | 被跳过（停更筛选） |
+| `xiangshui_lover_us` | 95000 | 加州账号，无墨西哥信号 | 被跳过（墨西哥信号筛选） |
 
 ### 6.5 验证导出文件
 

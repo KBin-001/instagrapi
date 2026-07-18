@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.export import export_records
-from app.export.common import EXPORT_FIELDS, sort_records
+from app.export.common import EXPORT_FIELDS, get_field_label, sort_records
 from app.models import (
     AccountTypeClassification,
     ContactInfo,
@@ -152,29 +152,36 @@ def test_export_csv_chinese_and_spanish_not_garbled(tmp_path: Path) -> None:
     ]
     results = export_records(records, tmp_path, formats=["csv"])
     csv_path = results["csv"]
-    # 用 utf-8-sig 读取（自动去除 BOM）
+    # 用 utf-8-sig 读取（自动去除 BOM），用 reader 按列顺序访问（表头为双语格式）
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        assert len(rows) == 1
+        reader = csv.reader(f)
+        all_rows = list(reader)
+        assert len(all_rows) == 2  # 1 表头 + 1 数据
+        header = all_rows[0]
+        data = all_rows[1]
+        # 定位列索引
+        full_name_idx = header.index(get_field_label("full_name"))
+        biography_idx = header.index(get_field_label("biography"))
         # 验证中文与重音字符原样保留
-        assert "艾丽斯" in rows[0]["full_name"]
-        assert "García" in rows[0]["full_name"]
-        assert "香水创作者" in rows[0]["biography"]
-        assert "ñ" in rows[0]["biography"]
-        assert "áéíóú" in rows[0]["biography"]
+        assert "艾丽斯" in data[full_name_idx]
+        assert "García" in data[full_name_idx]
+        assert "香水创作者" in data[biography_idx]
+        assert "ñ" in data[biography_idx]
+        assert "áéíóú" in data[biography_idx]
 
 
 def test_export_csv_contains_all_fields(tmp_path: Path) -> None:
-    """CSV 含所有导出字段。"""
+    """CSV 含所有导出字段（表头为双语格式「中文 (english)」）。"""
     records = [_make_record(username="alice", follower_count=50000, total_score=85.0, median_views=5000)]
     results = export_records(records, tmp_path, formats=["csv"])
     csv_path = results["csv"]
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        headers = reader.fieldnames
+        reader = csv.reader(f)
+        headers = next(reader)
+        # 表头为双语格式，验证每个字段的双语标签都存在
         for field in EXPORT_FIELDS:
-            assert field in headers, f"CSV 缺少字段: {field}"
+            label = get_field_label(field)
+            assert label in headers, f"CSV 缺少字段: {field} (期望标签: {label})"
 
 
 # ---------- JSON 导出 ----------
@@ -251,9 +258,9 @@ def test_export_xlsx_hyperlinks(tmp_path: Path) -> None:
 
     wb = load_workbook(xlsx_path)
     ws = wb.active
-    # 找到 profile_url 列
+    # 找到 profile_url 列（表头为双语格式「主页链接 (profile_url)」）
     header_row = [cell.value for cell in ws[1]]
-    url_col_idx = header_row.index("profile_url") + 1
+    url_col_idx = header_row.index(get_field_label("profile_url")) + 1
     # 数据行（第 2 行）
     cell = ws.cell(row=2, column=url_col_idx)
     assert cell.hyperlink is not None
@@ -281,7 +288,8 @@ def test_export_xlsx_chinese_not_garbled(tmp_path: Path) -> None:
     wb = load_workbook(xlsx_path)
     ws = wb.active
     header_row = [cell.value for cell in ws[1]]
-    name_col_idx = header_row.index("full_name") + 1
+    # 表头为双语格式「完整姓名 (full_name)」
+    name_col_idx = header_row.index(get_field_label("full_name")) + 1
     cell = ws.cell(row=2, column=name_col_idx)
     assert cell.value == "艾丽斯"
     wb.close()
@@ -334,11 +342,15 @@ def test_export_csv_applies_default_sort(tmp_path: Path) -> None:
     results = export_records(records, tmp_path, formats=["csv"])
     csv_path = results["csv"]
     with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
+        reader = csv.reader(f)
+        all_rows = list(reader)
+        header = all_rows[0]
+        data_rows = all_rows[1:]
+        # 定位 username 列（双语表头）
+        username_idx = header.index(get_field_label("username"))
         # 第一行应为 high（分数高）
-        assert rows[0]["username"] == "high"
-        assert rows[1]["username"] == "low"
+        assert data_rows[0][username_idx] == "high"
+        assert data_rows[1][username_idx] == "low"
 
 
 # ---------- 不导出密码/Session ----------
