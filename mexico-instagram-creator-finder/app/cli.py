@@ -479,13 +479,13 @@ def clear_local_data_cmd(
         db_path.unlink()
         cleared.append(f"数据库: {db_path}")
 
-    # 删除 Session
-    from app.instagram.session import delete_session
+    # 删除浏览器扩展令牌
+    from app.extension.token_store import ExtensionTokenStore
 
-    session_path = Path(settings.instagram.session_file)
-    if session_path.exists():
-        delete_session(session_path)
-        cleared.append(f"Session: {session_path}")
+    token_path = ExtensionTokenStore.default_path()
+    if token_path.exists():
+        token_path.unlink()
+        cleared.append(f"扩展令牌: {token_path}")
 
     # 删除输出目录内容
     out_dir = Path(settings.output.directory)

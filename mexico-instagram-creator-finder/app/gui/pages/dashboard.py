@@ -83,9 +83,40 @@ def _stat_card(icon: str, icon_color: str, label: str, value: str, sub: str = ""
                     ui.label(sub).classes("text-grey-6 text-xs")
 
 
+def _stat_inline(icon: str, label: str, initial: str = "0"):
+    """扩展统计的紧凑卡片：返回 (value_label) 用于后续刷新。"""
+    with ui.column().classes("flex-1 min-w-[120px] items-center"):
+        ui.icon(icon).classes("text-2xl text-grey-7")
+        value_label = ui.label(initial).classes("text-xl font-bold")
+        ui.label(label).classes("text-grey-7 text-xs")
+    return value_label
+
+
 def build_dashboard_page() -> None:
     """构建「概览」页面 UI。"""
+    from app.gui.dependencies import get_ingest_service
+
     ui.label("墨西哥 Instagram 内容创作者发现工具").classes("text-grey-7 text-sm mb-4")
+
+    # ===== 浏览器扩展状态卡片 =====
+    with ui.card().classes("w-full mb-4"):
+        with ui.row().classes("w-full items-center"):
+            ui.icon("extension").classes("text-3xl text-green-7")
+            ui.label("浏览器扩展").classes("text-lg font-bold")
+            ui.space()
+            ext_status_chip = ui.badge("未连接", color="grey-6").props("outline")
+
+        ui.separator().classes("my-2")
+
+        with ui.row().classes("w-full gap-2 wrap"):
+            ext_today_collected = _stat_inline("today", "今日收集", "0")
+            ext_today_new = _stat_inline("fiber_new", "新增候选", "0")
+            ext_today_dup = _stat_inline("filter_alt", "重复账号", "0")
+            ext_today_excl = _stat_inline("block", "排除账号", "0")
+
+        with ui.row().classes("w-full items-center mt-2"):
+            ui.label("最近同步：").classes("text-grey-8 text-sm")
+            ext_last_sync_label = ui.label("从未同步").classes("text-grey-7 text-sm")
 
     # ===== 当前任务状态卡片 =====
     with ui.card().classes("w-full mb-4"):
@@ -162,6 +193,24 @@ def build_dashboard_page() -> None:
 
     # ===== 实时刷新任务状态 =====
     def refresh() -> None:
+        # 扩展状态刷新
+        try:
+            ext_status = get_ingest_service().status()
+            if ext_status.connected:
+                ext_status_chip.text = "已连接"
+                ext_status_chip.props("color=green outline")
+            else:
+                ext_status_chip.text = "未连接"
+                ext_status_chip.props("color=grey-6 outline")
+            ext_today_collected.text = str(ext_status.today_collected)
+            ext_today_new.text = str(ext_status.today_new_candidates)
+            ext_today_dup.text = str(ext_status.today_duplicates)
+            ext_today_excl.text = str(ext_status.today_excluded)
+            if ext_status.last_handshake_at:
+                ext_last_sync_label.text = ext_status.last_handshake_at.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:  # noqa: BLE001 - 状态查询失败不阻塞 UI
+            pass
+
         is_running = gui_state.is_running
         p = gui_state.latest_progress
         elapsed = gui_state.elapsed_seconds()

@@ -1,6 +1,7 @@
 .env
 *.session.json
 .instagram_session.json
+data/instagram_session.json
 data/*.db
 data/*.db-journal
 output/*

@@ -89,11 +89,12 @@ class GuiState:
             self.last_error = None
             self.started_at = time.time()
 
-        # 校验凭据（非 dry-run 模式）
+        # 校验凭据（非 dry-run 模式不再支持 instagrapi 登录）
         if not dry_run:
-            username = self.settings.ig_username
-            if not username:
-                return False, "未配置 IG_USERNAME，请在「设置」页面填写或使用 .env 文件"
+            return False, (
+                "非 dry-run 模式不再支持 instagrapi 移动端 API 登录。"
+                "请使用浏览器扩展采集数据，或开启 DRY-RUN 模式测试流程。"
+            )
 
         # 创建令牌
         self._token = CancellationToken()

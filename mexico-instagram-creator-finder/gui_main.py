@@ -13,6 +13,36 @@
 
 from __future__ import annotations
 
+# ---- PyInstaller --windowed 模式 stdout/stderr 修复 ----
+# console=False 时没有控制台窗口，sys.stdout/sys.stderr 为 None。
+# uvicorn 的 DefaultFormatter 会调用 sys.stdout.isatty() 导致 AttributeError。
+# 必须在导入 nicegui/uvicorn 之前重定向到空流。
+import os
+import sys
+
+if getattr(sys, "frozen", False):  # 仅打包环境需要修复
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="replace")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8", errors="replace")
+
+# ---- PyInstaller 包元数据缺失修复 ----
+# PyInstaller 不总是打包 .dist-info 元数据，而 nicegui/fastapi 等库在启动时
+# 会通过 importlib.metadata.version() 读取自身版本，导致 PackageNotFoundError。
+# 在导入 nicegui 之前拦截 version() 调用，找不到时返回默认值。
+if getattr(sys, "frozen", False):
+    import importlib.metadata as _meta
+
+    _orig_version = _meta.version
+
+    def _safe_version(name: str, default: str = "0.0.0") -> str:
+        try:
+            return _orig_version(name)
+        except _meta.PackageNotFoundError:
+            return default
+
+    _meta.version = _safe_version  # type: ignore[assignment]
+
 # ---- Python 3.14 兼容性 shim ----
 # vbuild 0.8.2（nicegui 依赖）调用 pkgutil.find_loader，但该函数自 3.12 弃用、3.14 移除。
 # 在导入 nicegui 之前先打补丁，用 importlib.util.find_spec 提供等价实现。
@@ -489,14 +519,19 @@ def build_app() -> None:
 
         ui.space()
 
-        # 状态指示
+        # 状态指示：扩展连接状态
         ui.html('<span class="dot"></span>').classes("status-pill")
-        status_label = ui.label("Instagram 未连接 · 空闲").classes("status-pill text-white")
+        status_label = ui.label("扩展未连接 · 空闲").classes("status-pill text-white")
 
         def update_status_label() -> None:
-            env_user = _read_env_username()
-            connected = bool(env_user)
-            connected_text = "Instagram 已连接" if connected else "Instagram 未连接"
+            from app.gui.dependencies import get_ingest_service
+
+            try:
+                ext_status = get_ingest_service().status()
+                connected = ext_status.connected
+            except Exception:  # noqa: BLE001 - 状态查询失败不阻塞 UI
+                connected = False
+            connected_text = "扩展已连接" if connected else "扩展未连接"
 
             if gui_state.is_running:
                 status_label.text = f"{connected_text} · 任务运行中"
@@ -627,46 +662,135 @@ def _highlight_current(nav_buttons: dict, current: str) -> None:
             btn.classes(remove="active")
 
 
-def _read_env_username() -> str:
-    """读取 .env 中的 IG_USERNAME（用于状态显示）。"""
-    import os
-    import sys
-    from pathlib import Path
+def _get_windows_excluded_port_ranges() -> list[tuple[int, int]]:
+    """查询 Windows TCP 端口排除范围（netsh）。
 
-    # 优先从环境变量读取（运行时已同步）
-    user = os.environ.get("IG_USERNAME", "").strip()
-    if user:
-        return user
-
-    # 回退到 .env 文件
-    if getattr(sys, "frozen", False):
-        env_path = Path(sys.executable).resolve().parent / ".env"
-    else:
-        env_path = Path(".env").resolve()
-
-    if not env_path.exists():
-        return ""
+    Hyper-V / WSL2 / Docker Desktop 会动态保留端口范围，
+    bind 到这些端口会返回 WSAEACCES (10013)。
+    其他平台返回空列表。
+    """
+    if sys.platform != "win32":
+        return []
+    import subprocess
 
     try:
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("IG_USERNAME="):
-                return line.split("=", 1)[1].strip()
+        result = subprocess.run(
+            ["netsh", "interface", "ipv4", "show", "excludedportrange", "protocol=tcp"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    ranges: list[tuple[int, int]] = []
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        # 期望格式："开始端口 结束端口"，均为纯数字
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            try:
+                lo, hi = int(parts[0]), int(parts[1])
+                ranges.append((lo, hi))
+            except ValueError:
+                continue
+    return ranges
+
+
+def _pick_available_port(preferred: int = 8080) -> int:
+    """检测可用端口；首选端口不可用时自动尝试备选端口。
+
+    Windows 存在端口排除范围（netsh interface ipv4 show excludedportrange protocol=tcp），
+    8080 可能被系统保留导致绑定失败。
+
+    注意：不能用 SO_REUSEADDR 测试——Windows 上 SO_REUSEADDR 会绕过排除范围检查，
+    导致测试通过但 uvicorn 实际 bind 失败。这里用与 uvicorn 一致的方式（不带 SO_REUSEADDR）。
+    """
+    import socket
+
+    excluded = _get_windows_excluded_port_ranges()
+
+    def is_excluded(port: int) -> bool:
+        return any(lo <= port <= hi for lo, hi in excluded)
+
+    def is_bindable(port: int) -> bool:
+        if is_excluded(port):
+            return False
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                # 不设置 SO_REUSEADDR，与 uvicorn 默认行为一致
+                s.bind(("127.0.0.1", port))
+                return True
+        except OSError:
+            return False
+
+    # 候选端口：常用端口 + 高位端口（高位端口极少被排除）
+    candidates = [
+        preferred,
+        8888, 8889, 8890, 8090, 9000,  # 常用备选
+        18080, 28080, 38080, 48080,  # 高位备选，几乎不会被 Hyper-V 排除
+    ]
+    for port in candidates:
+        if is_bindable(port):
+            return port
+
+    # 全部候选都失败：让 OS 分配一个空闲端口
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
     except OSError:
-        pass
-    return ""
+        logger.warning("无法获取空闲端口，回退到首选端口 %d", preferred)
+        return preferred
 
 
 def main() -> None:
-    """启动 NiceGUI 服务。"""
-    from nicegui import ui
+    """启动 NiceGUI 服务。
+
+    端口优先级：环境变量 GUI_PORT > 自动检测可用端口（默认 8080）。
+    若默认端口被系统排除或占用，会自动尝试 8888/8889/8890 等备选端口。
+    """
+    import os
+    import webbrowser
+
+    from fastapi.middleware.cors import CORSMiddleware
+    from nicegui import app, ui
+
+    # 注册浏览器扩展通信路由（/api/extension/*）
+    from app.extension.routes import register_extension_routes
+
+    # CORS：允许 chrome-extension:// 来源访问本地接口
+    # 虽然 host_permissions 应该让扩展绕过 CORS，但 MV3 某些场景下仍会被拦截
+    # 服务仅监听 127.0.0.1，且只接受本机连接，所以开放所有方法/头是安全的
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^(chrome-extension://.*|http://127\.0\.0\.1:\d+|http://localhost:\d+)$",
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    preferred = int(os.environ.get("GUI_PORT", "8080"))
+    port = _pick_available_port(preferred)
+    if port != preferred:
+        logger.warning("端口 %d 不可用，改用 %d", preferred, port)
+    local_api_url = f"http://127.0.0.1:{port}"
+    register_extension_routes(app, local_api_url=local_api_url)
+    # 把本地接口地址注入到扩展服务实例（设置页/概览页直接调用 service.status() 时可用）
+    from app.gui.dependencies import get_ingest_service
+
+    get_ingest_service().set_local_api_url(local_api_url)
 
     build_app()
-    logger.info("starting NiceGUI on http://127.0.0.1:8080")
+    logger.info("starting NiceGUI on %s", local_api_url)
+    # 延迟打开浏览器，让服务器先启动
+    ui.timer(1.5, lambda: webbrowser.open(local_api_url), once=True)
     ui.run(
         title="Mexico Creator Finder",
         host="127.0.0.1",
-        port=8080,
+        port=port,
         reload=False,
         show=False,
         favicon="🇲🇽",
@@ -674,4 +798,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        import traceback
+        # 打包环境下把崩溃日志写到 exe 同级目录，方便用户反馈
+        _log_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.getcwd()
+        try:
+            with open(os.path.join(_log_dir, "gui_crash.log"), "w", encoding="utf-8") as _f:
+                _f.write(traceback.format_exc())
+        except Exception:
+            pass
+        raise

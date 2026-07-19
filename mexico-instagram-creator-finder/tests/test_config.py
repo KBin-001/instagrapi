@@ -152,10 +152,12 @@ def test_priority_yaml_over_default(tmp_path: Path) -> None:
 # ---------- validate_settings ----------
 
 
-def test_validate_settings_missing_username(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_settings_missing_username(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """validate_settings：缺 IG_USERNAME 返回错误。"""
     monkeypatch.delenv("IG_USERNAME", raising=False)
     monkeypatch.delenv("IG_PASSWORD", raising=False)
+    # 切到临时目录避免读到真实 .env
+    monkeypatch.chdir(tmp_path)
     settings = build_settings()
     errors = validate_settings(settings)
     assert any("IG_USERNAME" in e for e in errors)

@@ -59,38 +59,75 @@ def build_new_search_page() -> None:
 
     settings = gui_state.settings
 
-    # ===== 搜索类型（单选）=====
-    ui.label("搜索类型").classes("section-label")
+    # ===== 搜索方式（单选）=====
+    ui.label("搜索方式").classes("section-label")
     with ui.row().classes("w-full mt-1 mb-3"):
         # NiceGUI 2.24.2 dict 格式：{value: label}
         search_type = ui.toggle(
-            options={"hashtag": "Hashtag 搜索", "import": "导入用户名", "seed": "种子账号扩展"},
-            value="hashtag",
+            options={
+                "extension": "浏览器扩展发现",
+                "hashtag": "Hashtag 搜索（实验）",
+                "import": "导入用户名",
+                "seed": "种子账号扩展",
+            },
+            value="extension",
         ).props("spread")
 
-    # 仅 Hashtag 搜索在当前版本可用，其他模式给出提示
+    # 模式说明
     with ui.row().classes("w-full items-center"):
         mode_hint = ui.label("").classes("text-grey-6 text-xs")
 
-        def on_type_change(_e: Any) -> None:
-            v = search_type.value
-            if v == "hashtag":
-                mode_hint.text = "✓ 已选择 Hashtag 搜索，可直接配置下方参数"
-                mode_hint.classes(replace="text-green-7 text-xs")
-                hashtag_card.set_enabled(True)
-            elif v == "import":
-                mode_hint.text = "该模式将在后续版本支持；当前请使用 Hashtag 搜索"
-                mode_hint.classes(replace="text-amber-7 text-xs")
-                hashtag_card.set_enabled(True)  # 仍允许配置避免阻塞
-            else:
-                mode_hint.text = "种子账号扩展将在后续版本支持；当前请使用 Hashtag 搜索"
-                mode_hint.classes(replace="text-amber-7 text-xs")
-                hashtag_card.set_enabled(True)
+    # ===== 浏览器扩展使用说明卡片（默认显示）=====
+    extension_card = ui.card().classes("w-full mb-3 hashtag-card")
+    with extension_card:
+        ui.label("浏览器扩展发现").classes("card-label")
+        ui.label(
+            "通过 Chrome 扩展在你已登录的 Instagram 官方网页中采集公开数据。\n"
+            "本地 NiceGUI 不接收 Instagram 密码，不进行移动端 API 登录。"
+        ).classes("text-grey-7 text-xs mb-2 whitespace-pre-wrap")
+        ui.label("使用步骤：").classes("text-grey-8 text-sm mt-1")
+        ui.label(
+            "1. 在 Chrome 中登录 Instagram 官方网页\n"
+            "2. 打开任意符合方向的创作者主页（如香水 / 美妆 / 护肤 / 穿搭博主）\n"
+            "3. 点击浏览器工具栏的扩展图标，打开侧边栏\n"
+            "4. 在侧边栏粘贴本地令牌（在「设置 → 浏览器扩展」可查看）\n"
+            "5. 点击「保存到本地」，账号会自动进入本地任务\n"
+            "6. 重复以上步骤采集更多账号，或前往「博主结果」页查看"
+        ).classes("text-grey-7 text-sm whitespace-pre-wrap")
+        ui.label(
+            "本模式不调用 instagrapi，不会触发 ChallengeRequired 或 HTTP 429。"
+        ).classes("text-green-7 text-xs mt-2")
 
-        search_type.on("update:model-value", on_type_change)
-        # 初始化提示
-        mode_hint.text = "✓ 已选择 Hashtag 搜索，可直接配置下方参数"
-        mode_hint.classes(replace="text-green-7 text-xs")
+    def on_type_change(_e: Any) -> None:
+        v = search_type.value
+        if v == "extension":
+            mode_hint.text = "✓ 已选择浏览器扩展发现，按上方说明操作"
+            mode_hint.classes(replace="text-green-7 text-xs")
+            extension_card.set_visibility(True)
+            hashtag_card.set_visibility(False)
+        elif v == "hashtag":
+            mode_hint.text = (
+                "⚠️ 实验功能：instagrapi 移动端 API 登录已移除，"
+                "仅 DRY-RUN 模式可运行真实搜索。可能触发 Instagram 验证。"
+            )
+            mode_hint.classes(replace="text-amber-7 text-xs")
+            extension_card.set_visibility(False)
+            hashtag_card.set_visibility(True)
+        elif v == "import":
+            mode_hint.text = "该模式将在后续版本支持；当前请使用浏览器扩展发现"
+            mode_hint.classes(replace="text-amber-7 text-xs")
+            extension_card.set_visibility(False)
+            hashtag_card.set_visibility(True)
+        else:
+            mode_hint.text = "种子账号扩展将在后续版本支持；当前请使用浏览器扩展发现"
+            mode_hint.classes(replace="text-amber-7 text-xs")
+            extension_card.set_visibility(False)
+            hashtag_card.set_visibility(True)
+
+    search_type.on("update:model-value", on_type_change)
+    # 初始化提示
+    mode_hint.text = "✓ 已选择浏览器扩展发现，按上方说明操作"
+    mode_hint.classes(replace="text-green-7 text-xs")
 
     # ===== 搜索领域 chips =====
     ui.label("搜索领域").classes("section-label")
@@ -107,6 +144,7 @@ def build_new_search_page() -> None:
 
     # ===== Hashtag 输入（核心卡片）=====
     hashtag_card = ui.card().classes("w-full mb-3 hashtag-card")
+    hashtag_card.set_visibility(False)  # 默认隐藏，扩展模式下不显示
     with hashtag_card:
         ui.label("Hashtag").classes("card-label")
         ui.label("每行一个，不带 # 号；留空则使用 config/hashtags.yaml 默认值。").classes("text-grey-7 text-xs mb-1")
@@ -313,6 +351,18 @@ def build_new_search_page() -> None:
     ui.timer(0.5, update_buttons)
 
     def on_start() -> None:
+        # 扩展模式：不启动 SearchService，提示用户去扩展操作
+        if search_type.value == "extension":
+            ui.notify(
+                "浏览器扩展模式无需启动搜索。请在 Chrome 中打开 Instagram 主页并使用扩展采集。",
+                type="info",
+                position="top",
+                timeout=6000,
+            )
+            msg_label.text = "请在 Chrome 扩展中采集账号，结果会自动进入本地数据库。"
+            msg_label.classes(replace="text-blue-7")
+            return
+
         # 解析 hashtag
         raw = hashtag_text.value or ""
         hashtags = [h.strip().lstrip("#").lower() for h in raw.splitlines() if h.strip()]

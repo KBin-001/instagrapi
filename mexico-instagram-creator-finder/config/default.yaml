@@ -1,5 +1,5 @@
 instagram:
-  session_file: ".instagram_session.json"
+  session_file: "data/instagram_session.json"
   request_delay_min_seconds: 4
   request_delay_max_seconds: 8
   retry_network_errors: 2

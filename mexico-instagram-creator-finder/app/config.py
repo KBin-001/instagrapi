@@ -55,8 +55,21 @@ PROJECT_ROOT = _resolve_project_root()
 DEFAULT_CONFIG_DIR = _resolve_config_dir()
 
 
+def resolve_path(relative: str | Path) -> Path:
+    """将相对路径解析为基于 PROJECT_ROOT 的绝对路径。
+
+    GUI、CLI、pytest 和打包环境的工作目录可能不同，
+    所有文件路径（session_file、database_file、output 等）都应通过此函数解析。
+    已是绝对路径时直接返回。
+    """
+    p = Path(relative)
+    if p.is_absolute():
+        return p
+    return PROJECT_ROOT / p
+
+
 class InstagramSettings(BaseModel):
-    session_file: str = ".instagram_session.json"
+    session_file: str = "data/instagram_session.json"
     request_delay_min_seconds: int = 4
     request_delay_max_seconds: int = 8
     retry_network_errors: int = 2
