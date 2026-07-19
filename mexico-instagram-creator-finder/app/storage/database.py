@@ -45,6 +45,24 @@ class TaskRow(Base):
     stop_reason = Column(Text, nullable=True)
     config_snapshot = Column(Text, nullable=True)  # JSON 快照（脱敏）
 
+    # ===== 进度持久化字段（GUI 实时显示用）=====
+    # 即使页面刷新/WebSocket 重连/GUI 重启，也能从 SQLite 恢复最新进度
+    stage = Column(String, nullable=True)  # 当前阶段（login/discovery/deduplication/...）
+    progress_message = Column(Text, nullable=True)  # 最近一条进度消息
+    current_hashtag = Column(String, nullable=True)
+    current_username = Column(String, nullable=True)
+    hashtags_total = Column(Integer, default=0)
+    hashtags_completed = Column(Integer, default=0)
+    candidates_found = Column(Integer, default=0)  # 原始发现数
+    candidates_kept = Column(Integer, default=0)  # 去重+排除后保留数
+    profiles_total = Column(Integer, default=0)  # 待分析账号数
+    profiles_analyzed = Column(Integer, default=0)  # 已分析（含匹配+跳过+失败）
+    profiles_matched = Column(Integer, default=0)  # 符合条件的账号数
+    profiles_skipped = Column(Integer, default=0)  # 被筛选跳过的账号数
+    profiles_failed = Column(Integer, default=0)  # 失败账号数
+    overall_progress = Column(Integer, default=0)  # 总体百分比 0-100
+    progress_updated_at = Column(DateTime, nullable=True)  # 进度最后更新时间
+
 
 class HashtagRow(Base):
     __tablename__ = "hashtags"
@@ -210,8 +228,46 @@ class Database:
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(self.engine)
+        self._migrate_task_progress_columns()
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         logger.info("database initialized at %s", self.database_file)
+
+    def _migrate_task_progress_columns(self) -> None:
+        """自动为旧版 tasks 表添加进度持久化列（ALTER TABLE ADD COLUMN）。
+
+        幂等：已存在的列会跳过。SQLite 不支持 IF NOT EXISTS，所以用 PRAGMA 检查。
+        """
+        # 期望的列名列表（与 TaskRow 中的进度字段一致）
+        progress_columns: list[tuple[str, str]] = [
+            ("stage", "VARCHAR"),
+            ("progress_message", "TEXT"),
+            ("current_hashtag", "VARCHAR"),
+            ("current_username", "VARCHAR"),
+            ("hashtags_total", "INTEGER DEFAULT 0"),
+            ("hashtags_completed", "INTEGER DEFAULT 0"),
+            ("candidates_found", "INTEGER DEFAULT 0"),
+            ("candidates_kept", "INTEGER DEFAULT 0"),
+            ("profiles_total", "INTEGER DEFAULT 0"),
+            ("profiles_analyzed", "INTEGER DEFAULT 0"),
+            ("profiles_matched", "INTEGER DEFAULT 0"),
+            ("profiles_skipped", "INTEGER DEFAULT 0"),
+            ("profiles_failed", "INTEGER DEFAULT 0"),
+            ("overall_progress", "INTEGER DEFAULT 0"),
+            ("progress_updated_at", "DATETIME"),
+        ]
+        try:
+            with self.engine.connect() as conn:
+                from sqlalchemy import text
+
+                rows = conn.execute(text("PRAGMA table_info(tasks)")).fetchall()
+                existing_cols = {r[1] for r in rows}  # r[1] 是列名
+                for col_name, col_type in progress_columns:
+                    if col_name not in existing_cols:
+                        conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {col_name} {col_type}"))
+                        logger.info("migrated tasks table: added column %s", col_name)
+                conn.commit()
+        except Exception as e:  # noqa: BLE001 - 迁移失败不应阻塞启动
+            logger.warning("task progress migration skipped: %s", e)
 
     def get_session(self):
         return self.Session()

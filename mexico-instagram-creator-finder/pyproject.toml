@@ -34,12 +34,14 @@ dependencies = [
     "rich>=13.7,<14",
     "pyyaml>=6.0,<7",
     "python-dotenv>=1.0,<2",
+    "nicegui>=2.0.0,<3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0,<9",
     "ruff>=0.5,<1",
+    "pyinstaller>=6.0,<7",
 ]
 
 [project.scripts]

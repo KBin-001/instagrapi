@@ -104,6 +104,126 @@ def get_task(session: Session, task_id: str) -> TaskRow | None:
     return session.get(TaskRow, task_id)
 
 
+def get_latest_task(session: Session) -> TaskRow | None:
+    """获取最近更新的任务（按 updated_at 倒序）。
+
+    GUI 进度页用此函数恢复显示，即使 GUI 重启也能从 SQLite 取到最新任务状态。
+    """
+    stmt = select(TaskRow).order_by(TaskRow.updated_at.desc()).limit(1)
+    return session.execute(stmt).scalar_one_or_none()
+
+
+def get_recent_tasks(session: Session, limit: int = 10) -> list[TaskRow]:
+    """获取最近 N 个任务（按 started_at 倒序）。"""
+    stmt = select(TaskRow).order_by(TaskRow.started_at.desc()).limit(limit)
+    return list(session.execute(stmt).scalars())
+
+
+# ---- 进度持久化 ----
+
+
+def update_task_progress(
+    session: Session,
+    task_id: str,
+    *,
+    stage: str | None = None,
+    message: str | None = None,
+    current_hashtag: str | None = None,
+    current_username: str | None = None,
+    hashtags_total: int | None = None,
+    hashtags_completed: int | None = None,
+    candidates_found: int | None = None,
+    candidates_kept: int | None = None,
+    profiles_total: int | None = None,
+    profiles_analyzed: int | None = None,
+    profiles_matched: int | None = None,
+    profiles_skipped: int | None = None,
+    profiles_failed: int | None = None,
+    overall_progress: int | None = None,
+) -> None:
+    """更新 task 的进度字段。
+
+    所有参数都是可选的，None 表示不修改该字段。
+    每次更新都刷新 updated_at 和 progress_updated_at，便于 GUI 检测活跃任务。
+
+    SearchService.emit 调用此函数持久化进度，GUI 通过定时查询 tasks 表恢复显示。
+    """
+    row = session.get(TaskRow, task_id)
+    if row is None:
+        logger.warning("update_task_progress: task %s not found", task_id)
+        return
+    now = _now()
+    if stage is not None:
+        row.stage = stage
+    if message is not None:
+        row.progress_message = message
+    if current_hashtag is not None:
+        row.current_hashtag = current_hashtag
+    if current_username is not None:
+        row.current_username = current_username
+    if hashtags_total is not None:
+        row.hashtags_total = hashtags_total
+    if hashtags_completed is not None:
+        row.hashtags_completed = hashtags_completed
+    if candidates_found is not None:
+        row.candidates_found = candidates_found
+    if candidates_kept is not None:
+        row.candidates_kept = candidates_kept
+    if profiles_total is not None:
+        row.profiles_total = profiles_total
+    if profiles_analyzed is not None:
+        row.profiles_analyzed = profiles_analyzed
+    if profiles_matched is not None:
+        row.profiles_matched = profiles_matched
+    if profiles_skipped is not None:
+        row.profiles_skipped = profiles_skipped
+    if profiles_failed is not None:
+        row.profiles_failed = profiles_failed
+    if overall_progress is not None:
+        row.overall_progress = max(0, min(100, int(overall_progress)))
+    row.updated_at = now
+    row.progress_updated_at = now
+    session.commit()
+
+
+def compute_overall_progress(
+    stage: str,
+    hashtags_completed: int = 0,
+    hashtags_total: int = 0,
+    profiles_analyzed: int = 0,
+    profiles_total: int = 0,
+) -> int:
+    """根据阶段和子进度估算总体百分比（0-100）。
+
+    6 个阶段平均分配权重：
+      login=5% / discovery=20% / deduplication=5% / exclusion=5% / profile_analysis=60% / export=5%
+    profile_analysis 阶段内部按 profiles_analyzed / profiles_total 比例推进。
+    completed 阶段返回 100。
+    """
+    # 阶段基线（cumulative）
+    stage_baselines = {
+        "login": 0,
+        "discovery": 5,
+        "deduplication": 25,
+        "exclusion": 30,
+        "profile_analysis": 35,
+        "export": 95,
+        "completed": 100,
+    }
+    if stage == "completed":
+        return 100
+    baseline = stage_baselines.get(stage, 0)
+    if stage == "discovery" and hashtags_total > 0:
+        # discovery 阶段内部按 hashtag 进度推进（5% → 25%）
+        sub_ratio = min(1.0, hashtags_completed / hashtags_total)
+        return min(95, int(baseline + sub_ratio * 20))
+    if stage == "profile_analysis" and profiles_total > 0:
+        # profile_analysis 阶段内部按账号分析进度推进（35% → 95%）
+        sub_ratio = min(1.0, profiles_analyzed / profiles_total)
+        return min(95, int(baseline + sub_ratio * 60))
+    return baseline
+
+
 # ---- Hashtag ----
 
 

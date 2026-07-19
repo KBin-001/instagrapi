@@ -18,3 +18,11 @@ venv/
 *.egg-info/
 build/
 dist/
+
+# PyInstaller 产物
+*.spec.bak
+*.manifest
+
+# 图标二进制（assets/app.ico 可由 scripts/make_icon.py 重新生成）
+assets/app.ico
+assets/app.png

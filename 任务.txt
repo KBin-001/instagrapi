@@ -1,0 +1,570 @@
+针对你这个项目，最合适的路线不是重写 CLI，而是在现有 Python 核心上增加 GUI 层。CLI 和 GUI 共用同一套搜索、筛选、限流、SQLite、断点续传和导出逻辑。
+一、推荐选型：NiceGUI
+
+我建议第一版 GUI 使用：
+
+NiceGUI + SQLite + 现有 Python 核心 + PyInstaller
+
+原因是：
+
+全部使用 Python 开发，不需要单独写 Vue、React；
+可以做本地网页，也可以使用原生窗口模式运行；
+支持表格、分页、筛选、进度条、弹窗、侧边导航；
+提供后台任务机制，适合运行耗时较长的 Instagram 搜索任务；
+后续可以通过 PyInstaller 打包成 Windows 程序。NiceGUI 官方文档明确支持 native window 模式和后台任务；PyInstaller 可以将 Python 及其依赖打包为 Windows 可执行程序。
+
+最终用户体验可以是：
+
+双击 MexicoCreatorFinder.exe
+        ↓
+打开桌面窗口
+        ↓
+设置搜索条件
+        ↓
+开始搜索
+        ↓
+实时查看进度
+        ↓
+查看并筛选博主
+        ↓
+导出 Excel
+
+不需要用户手动输入：
+
+python main.py search
+二、三种 GUI 方案比较
+方案	开发难度	界面效果	长任务处理	打包桌面程序	建议
+Streamlit	最低	一般	一般	较麻烦	适合快速原型
+NiceGUI	较低	较好	较好	支持	最适合当前项目
+PySide6	较高	最好	最稳定	很适合	后期正式桌面版
+Streamlit
+
+Streamlit 支持多页面应用、Session State 和页面间状态共享，做数据表格原型很快。
+
+但它的页面交互采用重新运行脚本的模型，浏览器刷新或重新建立会话时，部分 Session 状态可能重置。对于你这种可能持续几十分钟的搜索任务，必须额外把任务状态放在 SQLite 或后台进程中，不能依赖页面 Session。
+
+因此它适合：
+
+先用两三天快速做出界面原型
+
+但不建议作为最终桌面版。
+
+NiceGUI
+
+NiceGUI 可以：
+
+用 Python 写页面；
+运行在浏览器；
+开启 native 模式显示为桌面窗口；
+运行后台任务；
+使用计时器刷新任务进度；
+结合表格和响应式数据；
+使用 PyInstaller 打包。
+
+它在开发效率和产品效果之间最平衡。
+
+PySide6
+
+PySide6 是 Qt 官方 Python 绑定，适合制作真正的 Windows 桌面软件。Qt 提供成熟的控件、Model/View 表格架构，以及线程和信号槽机制。
+
+对于耗时任务，可以使用 QThread 或线程池运行搜索，避免界面冻结；Qt 官方文档也明确说明，多线程适合处理耗时操作而不阻塞 GUI。
+
+但缺点是：
+
+代码量明显更多；
+页面布局开发更慢；
+表格、筛选和状态绑定需要自己实现；
+Codex 修改 UI 时更容易产生复杂代码。
+
+所以推荐：
+
+第一版：NiceGUI
+后续追求正式桌面软件质感：PySide6
+三、最重要的架构调整
+
+目前 CLI 可能是这样的：
+
+def search_command():
+    # 登录
+    # 搜索 hashtag
+    # 分析账号
+    # 导出结果
+
+这种代码不能直接复制一份给 GUI。
+
+应该拆成三层：
+
+┌──────────────────────────────┐
+│         展示层               │
+│ CLI             NiceGUI      │
+└──────────────┬───────────────┘
+               │
+┌──────────────▼───────────────┐
+│         应用服务层            │
+│ SearchService                │
+│ TaskService                  │
+│ ExportService                │
+│ ExclusionService             │
+└──────────────┬───────────────┘
+               │
+┌──────────────▼───────────────┐
+│         基础能力层            │
+│ instagrapi / SQLite / Excel  │
+└──────────────────────────────┘
+
+CLI 和 GUI 都调用：
+
+search_service.start_search(config)
+
+而不是让 GUI 运行：
+
+subprocess.run(["python", "main.py", "search"])
+
+用 subprocess 调用 CLI 可以作为临时原型，但不适合长期架构，因为：
+
+很难可靠传递实时进度；
+停止和恢复任务比较麻烦；
+错误只能从控制台文字解析；
+GUI 与 CLI 状态容易不一致。
+四、核心搜索服务应该怎样修改
+
+增加一个独立服务：
+
+class CreatorSearchService:
+    def run(
+        self,
+        config: SearchConfig,
+        progress_callback: ProgressCallback,
+        cancellation_token: CancellationToken,
+    ) -> SearchResult:
+        ...
+
+GUI 不关心 Instagram 具体请求，只接收结构化进度。
+
+例如：
+
+@dataclass
+class SearchProgress:
+    stage: str
+    current_hashtag: str | None
+    hashtags_completed: int
+    hashtags_total: int
+    candidates_found: int
+    profiles_analyzed: int
+    profiles_matched: int
+    profiles_failed: int
+    message: str
+
+搜索代码在每个阶段发送进度：
+
+progress_callback(
+    SearchProgress(
+        stage="profile_analysis",
+        current_hashtag="#perfumemexico",
+        hashtags_completed=6,
+        hashtags_total=15,
+        candidates_found=142,
+        profiles_analyzed=38,
+        profiles_matched=17,
+        profiles_failed=2,
+        message="正在分析 @creator_name",
+    )
+)
+
+GUI 收到后更新：
+
+进度条；
+当前账号；
+已发现数量；
+已分析数量；
+符合数量；
+错误数量。
+五、推荐的项目结构
+
+在现有结构中增加 services 和 gui：
+
+mexico-instagram-creator-finder/
+├─ main.py
+├─ gui_main.py
+├─ AGENTS.md
+├─ pyproject.toml
+│
+├─ app/
+│  ├─ cli/
+│  │  ├─ commands.py
+│  │  └─ presentation.py
+│  │
+│  ├─ gui/
+│  │  ├─ app.py
+│  │  ├─ theme.py
+│  │  ├─ state.py
+│  │  ├─ components/
+│  │  │  ├─ navigation.py
+│  │  │  ├─ task_progress.py
+│  │  │  ├─ creator_table.py
+│  │  │  └─ creator_detail.py
+│  │  └─ pages/
+│  │     ├─ dashboard.py
+│  │     ├─ new_search.py
+│  │     ├─ tasks.py
+│  │     ├─ creators.py
+│  │     ├─ exclusions.py
+│  │     └─ settings.py
+│  │
+│  ├─ services/
+│  │  ├─ search_service.py
+│  │  ├─ task_service.py
+│  │  ├─ result_service.py
+│  │  ├─ export_service.py
+│  │  └─ exclusion_service.py
+│  │
+│  ├─ domain/
+│  │  ├─ search_config.py
+│  │  ├─ search_progress.py
+│  │  ├─ creator.py
+│  │  └─ task.py
+│  │
+│  ├─ instagram/
+│  ├─ analysis/
+│  ├─ storage/
+│  └─ export/
+│
+└─ tests/
+   ├─ unit/
+   └─ integration/
+
+启动方式：
+
+python gui_main.py
+
+开发阶段也可以：
+
+python -m app.gui.app
+六、GUI 应该包含哪些页面
+1. 首页仪表盘
+
+首页不要直接塞搜索表单，而是显示整体状态。
+
+┌──────────────────────────────────────────┐
+│ Mexico Creator Finder                   │
+│ 发现适合墨西哥市场的 Instagram 创作者   │
+├──────────────────────────────────────────┤
+│ 历史发现       符合条件       已排除      │
+│  1,286          238           604        │
+├──────────────────────────────────────────┤
+│ 最近任务                                  │
+│ 墨西哥香水博主 · 已完成 · 找到 31 人      │
+│ 墨西哥 UGC 创作者 · 已停止 · 找到 18 人   │
+│                                          │
+│                 [新建搜索]               │
+└──────────────────────────────────────────┘
+
+数据来自 SQLite，不依赖内存 Session。
+
+2. 新建搜索
+
+建议分成四个区块。
+
+搜索来源
+搜索方式：
+● Hashtag
+○ 种子账号
+○ 地点
+○ 导入用户名
+
+第一版可以只开放 Hashtag 和导入用户名。
+
+搜索关键词
+
+提供预设：
+
+[香水] [美妆] [护肤] [穿搭] [UGC] [生活方式]
+
+点击“香水”自动填充：
+
+perfumemexico
+perfumesmexico
+fraganciasmexico
+perfumesdemujer
+
+同时允许用户自行修改。
+
+筛选条件
+粉丝数：      20,000 ───── 300,000
+最低播放量：  2,000
+最长停更：    90天
+最大分析数：  100
+
+☑ 只查看公开账号
+☑ 必须有墨西哥信号
+☑ 排除品牌和商店
+☐ 必须有公开联系方式
+任务确认
+
+点击开始前显示预计工作量：
+
+本次将搜索：
+15个 Hashtag
+最多读取300条公开内容
+最多分析100个账号
+预计使用保守请求频率
+
+不要显示承诺完成时间，因为实际速度受 Instagram 返回和限流影响。
+
+3. 任务进度
+
+这是 GUI 最重要的一页。
+
+墨西哥香水博主搜索                         运行中
+
+总体进度
+██████████████░░░░░░  62%
+
+当前阶段：分析账号
+当前账号：@creator_name
+当前来源：#fraganciasmexico
+
+Hashtag      15 / 15
+候选账号     186
+去重后       137
+已分析        62 / 100
+符合条件      24
+跳过          31
+错误           2
+
+[停止任务]  [后台运行]
+
+下方增加简化日志：
+
+22:31:05  完成 #perfumemexico，发现28个账号
+22:31:12  跳过 @brand：识别为品牌账号
+22:31:23  收录 @creator：评分84
+
+日志不能显示密码、Cookie 或 Session。
+
+4. 博主结果
+
+建议使用表格作为主视图：
+
+选择	博主	粉丝	播放中位数	类型	地区可信度	评分	联系
+□	@creator1	52K	8.4K	香水/美妆	92	86	邮箱
+□	@creator2	31K	4.1K	UGC	85	80	WhatsApp
+
+提供顶部筛选：
+
+搜索账号  [____________]
+
+推荐等级：[全部]
+垂类：[全部]
+粉丝：[20K—150K]
+最低播放：[3000]
+地区可信度：[80以上]
+公开联系方式：[全部]
+
+[应用筛选] [清空]
+
+点击一行后，右侧打开详情面板，不要跳转页面。
+
+详情显示：
+
+头像；
+用户名；
+Instagram 主页按钮；
+Biography；
+内容分类；
+地区判断依据；
+最近内容指标；
+评分拆分；
+公开联系方式及来源；
+发现来源；
+排除或保留按钮。
+5. 排除名单
+
+支持拖入：
+
+TXT；
+CSV；
+XLSX。
+
+同时支持直接粘贴：
+
+@username1
+
+username3
+
+显示：
+
+总排除账号：326
+本次搜索已跳过：41
+重复记录：13
+解析失败：2
+6. 设置
+
+建议只保留必要设置：
+
+Instagram
+登录账号：已配置
+Session：有效/需要验证
+
+[验证登录状态]
+[清除本地 Session]
+
+不要在 GUI 中保存或回显密码。仍由 .env 或系统环境变量提供。
+
+请求安全
+请求间隔：4—8秒
+网络错误重试：2次
+限流时：立即停止
+验证时：立即停止
+
+不要允许用户把间隔调得过低。例如最低值限制为4秒。
+
+本地数据
+数据库位置
+导出位置
+日志位置
+
+[打开数据目录]
+[清理历史任务]
+[删除全部本地数据]
+七、长时间搜索任务怎么处理
+
+不能直接在 GUI 按钮处理函数里调用搜索：
+
+def on_search_click():
+    search_service.run(config)  # 会导致界面卡死
+
+推荐使用 NiceGUI 的后台执行方式。
+
+大致结构：
+
+from nicegui import run, ui
+
+async def start_search() -> None:
+    start_button.disable()
+
+    try:
+        task_id = await run.io_bound(
+            search_service.run,
+            current_config,
+            progress_reporter,
+            cancellation_token,
+        )
+        ui.notify("搜索任务已完成", type="positive")
+    except Exception as exc:
+        ui.notify(f"任务失败：{exc}", type="negative")
+    finally:
+        start_button.enable()
+
+NiceGUI 官方文档提供后台任务和 I/O-bound 工作执行机制，适合避免长任务阻塞 UI。
+
+不过必须继续遵守项目规则：
+
+GUI 后台线程 ≠ 并发请求 Instagram
+
+只允许把整个搜索任务放到后台，Instagram 请求内部仍然：
+
+单账号
+单请求
+顺序执行
+保守间隔
+八、停止和恢复怎么设计
+
+定义一个取消令牌：
+
+class CancellationToken:
+    def __init__(self) -> None:
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancelled
+
+搜索循环每完成一次安全步骤后检查：
+
+for username in candidates:
+    if cancellation_token.is_cancelled:
+        checkpoint_repository.save(task_id, current_state)
+        task_repository.mark_stopped(task_id)
+        return
+
+    analyze_creator(username)
+
+点击“停止任务”：
+
+def stop_search() -> None:
+    cancellation_token.cancel()
+
+这里应是安全停止：
+
+不再开始下一个账号；
+完成当前数据库写入；
+保存断点；
+把任务标记为“已停止”；
+下次点击“继续任务”恢复。
+
+不要强制杀死线程，否则可能造成：
+
+SQLite 写入中断；
+Session 文件损坏；
+当前账号状态不完整。
+九、SQLite 应成为唯一任务状态源
+
+GUI 的页面状态只负责显示，真实进度必须写入 SQLite。
+
+建议增加：
+
+search_tasks
+search_task_progress
+search_sources
+creator_candidates
+creator_profiles
+creator_metrics
+creator_scores
+task_errors
+exclusion_entries
+
+任务表至少包含：
+
+id
+name
+status
+stage
+created_at
+started_at
+stopped_at
+completed_at
+current_hashtag
+current_username
+candidate_count
+analyzed_count
+matched_count
+skipped_count
+failed_count
+stop_reason
+config_json
+
+任务状态：
+
+PENDING
+RUNNING
+STOPPING
+STOPPED
+COMPLETED
+FAILED
+RATE_LIMITED
+VERIFICATION_REQUIRED
+
+GUI 每隔一秒左右从数据库读取任务状态并刷新。
+
+这样即使：
+
+用户切换页面；
+GUI 页面刷新；
+程序意外关闭；
+下次重新启动；
+
+任务记录和已完成结果仍然存在。

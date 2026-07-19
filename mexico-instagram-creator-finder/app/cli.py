@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -43,7 +42,6 @@ from app.exceptions import (
     SecurityStopError,
 )
 from app.logging_config import get_logger, setup_logging
-from app.models import TaskCheckpoint
 
 logger = get_logger("cli")
 console = Console()
@@ -61,10 +59,6 @@ app = typer.Typer(
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
-
-
-def _generate_task_id() -> str:
-    return f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
 
 def _print_no_credentials_hint() -> None:
@@ -272,9 +266,140 @@ def search_cmd(
         )
     )
 
-    # 调用主流程
+    # 调用 SearchService 执行核心流程
+    from app.services import SearchService
+    from app.services.domain import (
+        STAGE_COMPLETED,
+        STAGE_DEDUPLICATION,
+        STAGE_DISCOVERY,
+        STAGE_EXCLUSION,
+        STAGE_EXPORT,
+        STAGE_LOGIN,
+        STAGE_PROFILE_ANALYSIS,
+        CancellationToken,
+        SearchConfig,
+        SearchProgress,
+        TaskStatus,
+    )
+
+    config = SearchConfig(
+        settings=settings,
+        hashtags=hashtags_list,
+        dry_run=dry_run,
+        resume=settings.resume,
+        reset_task=settings.reset_task,
+    )
+    token = CancellationToken()
+
+    # CLI 进度展示：根据 stage 切换 Rich Progress
+    current_progress: Progress | None = None
+    current_task_id: int | None = None
+
+    def on_progress(p: SearchProgress) -> None:
+        nonlocal current_progress, current_task_id
+
+        # 阶段切换
+        if p.stage == STAGE_LOGIN:
+            console.print(f"[bold]阶段 1/6: {p.message}...[/bold]")
+        elif p.stage == STAGE_DISCOVERY:
+            if current_progress is None:
+                console.print("[bold]阶段 2/6: 从 Hashtag 发现候选账号...[/bold]")
+                console.print(f"待处理 Hashtag: {p.hashtags_total - p.hashtags_completed} 个")
+                current_progress = Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    MofNCompleteColumn(),
+                    TimeElapsedColumn(),
+                    console=console,
+                )
+                current_progress.start()
+                current_task_id = current_progress.add_task("发现候选...", total=p.hashtags_total or 1)
+            if current_task_id is not None and current_progress is not None:
+                current_progress.update(
+                    current_task_id,
+                    completed=p.hashtags_completed,
+                    description=f"#{p.current_hashtag or ''} {p.message}",
+                )
+        elif p.stage == STAGE_DEDUPLICATION:
+            if current_progress is not None:
+                current_progress.stop()
+                current_progress = None
+                current_task_id = None
+            console.print(f"[bold]阶段 3/6: 去重...[/bold]  {p.message}")
+        elif p.stage == STAGE_EXCLUSION:
+            console.print(f"[bold]阶段 4/6: 应用排除名单...[/bold]  {p.message}")
+        elif p.stage == STAGE_PROFILE_ANALYSIS:
+            if current_progress is None:
+                console.print(f"[bold]阶段 5/6: 获取资料与分析...[/bold]  {p.message}")
+                current_progress = Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    MofNCompleteColumn(),
+                    TimeElapsedColumn(),
+                    console=console,
+                )
+                current_progress.start()
+                total_to_analyze = p.profiles_total or 1
+                current_task_id = current_progress.add_task(
+                    f"分析 @{p.current_username or ''}",
+                    total=total_to_analyze,
+                )
+            if current_task_id is not None and current_progress is not None:
+                # profiles_analyzed 已包含 matched + skipped + failed（在 service 中累加）
+                current_progress.update(
+                    current_task_id,
+                    completed=p.profiles_analyzed,
+                    description=f"分析 @{p.current_username or ''}（匹配 {p.profiles_matched}）",
+                )
+        elif p.stage == STAGE_EXPORT:
+            if current_progress is not None:
+                current_progress.stop()
+                current_progress = None
+                current_task_id = None
+            console.print("[bold]阶段 6/6: 导出结果...[/bold]")
+            console.print(f"已分析: {p.profiles_matched}  已跳过: {p.profiles_skipped}  错误: {p.profiles_failed}")
+        elif p.stage == STAGE_COMPLETED:
+            if current_progress is not None:
+                current_progress.stop()
+                current_progress = None
+                current_task_id = None
+            console.print(f"[bold green]{p.message}[/bold green]")
+
     try:
-        _run_search_pipeline(settings, hashtags_list, dry_run=dry_run)
+        result = SearchService().run(config, progress_callback=on_progress, cancellation_token=token)
+
+        # 输出导出文件路径
+        for fmt, path in result.exported_files.items():
+            console.print(f"  {fmt.upper()}: {path}")
+
+        # 根据状态返回退出码
+        if result.status == TaskStatus.COMPLETED:
+            console.print(f"[bold green]任务完成[/bold green]  任务 ID: {result.task_id}")
+        elif result.status == TaskStatus.STOPPED:
+            console.print(
+                Panel.fit(
+                    f"[bold red]安全停止[/bold red]\n\n原因: {result.stop_reason}\n\n"
+                    f"已保存断点，可使用 [cyan]--resume[/cyan] 恢复任务。",
+                    title="任务停止",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=2) from None
+        elif result.status == TaskStatus.FAILED:
+            console.print(f"[bold red]任务失败：[/bold red] {result.stop_reason}")
+            raise typer.Exit(code=4) from None
+        elif result.status in (TaskStatus.RATE_LIMITED, TaskStatus.VERIFICATION_REQUIRED):
+            console.print(
+                Panel.fit(
+                    f"[bold red]任务停止[/bold red]\n\n原因: {result.stop_reason}\n\n"
+                    f"已保存断点，可使用 [cyan]--resume[/cyan] 恢复任务。",
+                    title="任务停止",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=2) from None
     except SecurityStopError as e:
         console.print(
             Panel.fit(
@@ -291,330 +416,6 @@ def search_cmd(
     except FinderError as e:
         console.print(f"[bold red]运行失败：[/bold red] {e}")
         raise typer.Exit(code=4) from None
-
-
-def _run_search_pipeline(settings: Settings, hashtags_list: list[str], dry_run: bool = False) -> None:
-    """串联主流程：登录 → 发现 → 去重 → 排除 → 资料 → 筛选 → 分析 → 评分 → 存储 → 导出。
-
-    Args:
-        settings: 项目配置
-        hashtags_list: 待处理的 Hashtag 列表
-        dry_run: 为 True 时使用 FakeInstagramClient 与预定义示例数据，
-                 不登录 Instagram、不联网，仅用于本地测试与流程演示。
-    """
-    from sqlalchemy import select
-
-    from app.analysis.account_classifier import classify_account_type
-    from app.analysis.contact_extractor import extract_contacts
-    from app.analysis.media_metrics import (
-        analyze_media_metrics,
-        extract_recent_captions,
-        extract_recent_hashtags,
-    )
-    from app.analysis.mexico_detector import detect_mexico_signal
-    from app.analysis.niche_classifier import classify_niche
-    from app.analysis.scoring import compute_score
-    from app.discovery.deduplication import deduplicate_candidates
-    from app.discovery.hashtag import discover_from_hashtags
-    from app.discovery.seeds import (
-        ExclusionEntry,
-        apply_exclusion,
-        parse_exclude_paths,
-        parse_exclude_strings,
-    )
-    from app.export import export_records
-    from app.storage.checkpoint import (
-        is_user_analyzed,
-        load_checkpoint,
-        mark_hashtag_completed,
-        mark_usernames_analyzed,
-        record_failed_username,
-        reset_task,
-        save_checkpoint,
-        update_status,
-    )
-    from app.storage.database import Database, TaskRow
-    from app.storage.repositories import (
-        load_all_records,
-        upsert_account_type,
-        upsert_candidate,
-        upsert_contact,
-        upsert_media_stats,
-        upsert_mexico_signal,
-        upsert_niche,
-        upsert_profile,
-        upsert_score,
-        upsert_task,
-    )
-
-    # 根据模式选择客户端：dry-run 使用 Fake，否则使用真实 InstagramClient
-    if dry_run:
-        from app.instagram.fake_client import FakeInstagramClient
-
-        client = FakeInstagramClient(settings)
-        console.print("[cyan][DRY-RUN] 使用预定义示例数据，不登录 Instagram、不联网[/cyan]")
-    else:
-        from app.instagram.client import InstagramClient
-
-        client = InstagramClient(settings)
-
-    # 任务 ID
-    task_id = _generate_task_id()
-    db = Database(settings.checkpoint.database_file)
-    session = db.get_session()
-
-    # 恢复任务
-    if settings.resume:
-        cp = load_checkpoint(session, task_id)
-        if cp is None:
-            # 找最近一个未完成的任务
-            stmt = (
-                select(TaskRow)
-                .where(TaskRow.status.in_(["running", "paused", "stopped"]))
-                .order_by(TaskRow.updated_at.desc())
-                .limit(1)
-            )
-            row = session.execute(stmt).scalar_one_or_none()
-            if row is not None:
-                task_id = row.task_id
-                cp = load_checkpoint(session, task_id)
-                console.print(f"[cyan]恢复任务 {task_id}[/cyan]")
-
-    if settings.reset_task:
-        reset_task(session, task_id)
-        console.print(f"[yellow]已重置任务 {task_id}[/yellow]")
-
-    # 初始化任务
-    now = _utcnow()
-    upsert_task(session, task_id, status="running", started_at=now)
-    cp = load_checkpoint(session, task_id) or TaskCheckpoint(task_id=task_id, status="running", started_at=now)
-    cp.status = "running"
-    save_checkpoint(session, cp)
-
-    try:
-        # 1. 登录（dry-run 模式下为模拟登录，立即成功）
-        if dry_run:
-            console.print("[bold]阶段 1/6: 模拟登录（DRY-RUN）...[/bold]")
-        else:
-            console.print("[bold]阶段 1/6: 登录 Instagram...[/bold]")
-        client.login_from_env()
-
-        # 2. 发现候选账号
-        console.print("[bold]阶段 2/6: 从 Hashtag 发现候选账号...[/bold]")
-        # 跳过已完成的 Hashtag
-        completed_ht = set(cp.completed_hashtags)
-        pending_ht = [h for h in hashtags_list if h.lower().lstrip("#") not in completed_ht]
-        if not pending_ht:
-            console.print("[yellow]所有 Hashtag 已完成，跳过发现阶段[/yellow]")
-            candidates = []
-        else:
-            console.print(f"待处理 Hashtag: {len(pending_ht)} 个")
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                MofNCompleteColumn(),
-                TimeElapsedColumn(),
-                console=console,
-            ) as progress:
-                progress_task = progress.add_task("发现候选...", total=len(pending_ht))
-
-                def on_done(tag: str, count: int) -> None:
-                    progress.advance(progress_task)
-                    mark_hashtag_completed(session, task_id, tag)
-
-                candidates = discover_from_hashtags(client, settings, pending_ht, on_hashtag_done=on_done)
-
-        # 3. 去重
-        console.print(f"[bold]阶段 3/6: 去重...[/bold]  候选数: {len(candidates)}")
-        candidates = deduplicate_candidates(candidates)
-
-        # 4. 应用排除名单
-        exclusion_entries: list[ExclusionEntry] = []
-        if settings.exclude_files:
-            # 区分文件路径与字符串
-            file_paths = [p for p in settings.exclude_files if Path(p).exists()]
-            str_items = [p for p in settings.exclude_files if not Path(p).exists()]
-            exclusion_entries.extend(parse_exclude_paths(file_paths))
-            exclusion_entries.extend(parse_exclude_strings(str_items))
-
-        kept_candidates, excluded_candidates = apply_exclusion(candidates, exclusion_entries)
-        console.print(f"排除: {len(excluded_candidates)}  保留: {len(kept_candidates)}")
-
-        # 保存候选到数据库
-        for c in kept_candidates:
-            upsert_candidate(session, c, task_id)
-        for c in excluded_candidates:
-            upsert_candidate(
-                session,
-                c,
-                task_id,
-                excluded=True,
-                exclusion_source="exclude_list",
-                exclusion_reason="用户排除名单匹配",
-            )
-
-        # 5. 资料获取 + 筛选 + 分析
-        console.print(f"[bold]阶段 4/6: 获取资料与分析...[/bold]  待分析: {len(kept_candidates)}")
-        analyzed_count = 0
-        skipped_count = 0
-        error_count = 0
-
-        # 应用 max_profiles_to_analyze 上限
-        to_analyze = kept_candidates[: settings.discovery.max_profiles_to_analyze]
-        # 跳过已分析
-        to_analyze = [c for c in to_analyze if not is_user_analyzed(session, task_id, c.username)]
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
-            progress_task = progress.add_task("分析账号...", total=len(to_analyze))
-            for candidate in to_analyze:
-                username = candidate.username
-                try:
-                    # 获取资料
-                    profile = client.user_info_by_username(username)
-
-                    # 粉丝范围筛选
-                    followers = profile.follower_count or 0
-                    if followers < settings.filters.min_followers or followers > settings.filters.max_followers:
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-
-                    # 私密账号筛选
-                    if settings.filters.require_public_account and profile.is_private:
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-
-                    # 获取近期内容
-                    medias = client.user_medias(username, amount=settings.analysis.recent_media_amount)
-
-                    # 分析
-                    metrics = analyze_media_metrics(medias, settings)
-                    captions = extract_recent_captions(medias, max_length=settings.analysis.maximum_caption_length)
-                    media_hashtags = extract_recent_hashtags(medias)
-
-                    mexico = detect_mexico_signal(
-                        profile,
-                        source_hashtags=candidate.source_hashtags,
-                        recent_captions=captions,
-                    )
-                    niche = classify_niche(
-                        profile,
-                        source_hashtags=candidate.source_hashtags,
-                        recent_captions=captions,
-                        recent_media_hashtags=media_hashtags,
-                    )
-                    account_type = classify_account_type(profile, source_hashtags=candidate.source_hashtags)
-                    contact = extract_contacts(profile)
-                    score = compute_score(
-                        profile,
-                        mexico,
-                        niche,
-                        metrics,
-                        contact,
-                        account_type,
-                        min_followers=settings.filters.min_followers,
-                        max_followers=settings.filters.max_followers,
-                        minimum_median_reel_views=settings.filters.minimum_median_reel_views,
-                        maximum_days_since_last_post=settings.filters.maximum_days_since_last_post,
-                    )
-
-                    # 墨西哥信号筛选
-                    if settings.filters.require_mexico_signal and mexico.mexico_confidence_score < 0.4:
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-
-                    # 品牌/媒体筛选
-                    if settings.filters.exclude_brands and account_type.account_type == "brand":
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-                    if settings.filters.exclude_media_accounts and account_type.account_type in ("media", "news"):
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-
-                    # 停更筛选
-                    if (
-                        metrics.days_since_last_post is not None
-                        and metrics.days_since_last_post > settings.filters.maximum_days_since_last_post
-                    ):
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-
-                    # 最低 Reels 中位播放量筛选
-                    if (
-                        settings.filters.minimum_median_reel_views > 0
-                        and metrics.reels_view_data_available == "available"
-                        and metrics.median_visible_reel_views is not None
-                        and metrics.median_visible_reel_views < settings.filters.minimum_median_reel_views
-                    ):
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-
-                    # 最低近期内容数量
-                    if metrics.recent_media_checked < settings.filters.minimum_recent_media_count:
-                        progress.advance(progress_task)
-                        skipped_count += 1
-                        continue
-
-                    # 保存
-                    upsert_profile(session, profile, task_id)
-                    upsert_media_stats(session, metrics, task_id, username)
-                    upsert_mexico_signal(session, mexico, task_id, username)
-                    upsert_niche(session, niche, task_id, username)
-                    upsert_account_type(session, account_type, task_id, username)
-                    upsert_contact(session, contact, task_id, username)
-                    upsert_score(session, score, task_id, username)
-                    analyzed_count += 1
-                    mark_usernames_analyzed(session, task_id, [username])
-
-                    progress.advance(progress_task)
-
-                except SecurityStopError:
-                    raise
-                except Exception as e:
-                    error_count += 1
-                    record_failed_username(session, task_id, username, str(e))
-                    logger.error("analyze %s failed: %s", username, e)
-                    progress.advance(progress_task)
-
-        console.print(f"已分析: {analyzed_count}  已跳过: {skipped_count}  错误: {error_count}")
-
-        # 6. 导出
-        console.print("[bold]阶段 5/6: 导出结果...[/bold]")
-        records = load_all_records(session, task_id)
-        results = export_records(records, settings.output.directory, settings.output.formats, task_id=task_id)
-        for fmt, path in results.items():
-            console.print(f"  {fmt.upper()}: {path}")
-
-        # 完成
-        console.print("[bold]阶段 6/6: 任务完成[/bold]")
-        update_status(session, task_id, "completed")
-        upsert_task(session, task_id, status="completed", completed_at=_utcnow())
-
-    except SecurityStopError as e:
-        update_status(session, task_id, "stopped", stop_reason=e.reason)
-        upsert_task(session, task_id, status="stopped", stop_reason=e.reason, completed_at=_utcnow())
-        raise
-    except Exception as e:
-        update_status(session, task_id, "failed", stop_reason=str(e))
-        upsert_task(session, task_id, status="failed", stop_reason=str(e), completed_at=_utcnow())
-        raise
-    finally:
-        session.close()
-        db.close()
 
 
 @app.command("export")

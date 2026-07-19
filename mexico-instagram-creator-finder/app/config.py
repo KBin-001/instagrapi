@@ -2,12 +2,18 @@
 
 优先级：命令行参数 > 环境变量 > 用户 YAML > 默认配置。
 密码仅从环境变量读取（IG_USERNAME/IG_PASSWORD），不写入 YAML/数据库/日志。
+
+打包后路径解析（PyInstaller 目录模式）：
+- 优先从可执行文件同级目录的 config/ 读取（用户可修改）
+- 若不存在，回退到 _MEIPASS 内置 config/（spec 中 datas 打包的副本）
+- 开发环境则用项目根目录的 config/
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +23,36 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG_DIR = PROJECT_ROOT / "config"
+
+def _resolve_project_root() -> Path:
+    """解析项目根目录（兼容开发环境与 PyInstaller 打包环境）。"""
+    if getattr(sys, "frozen", False):  # PyInstaller 打包后
+        # sys.executable 是 dist/MexicoCreatorFinder/MexicoCreatorFinder.exe
+        return Path(sys.executable).resolve().parent
+    # 开发环境：app/config.py 的上两级
+    return Path(__file__).resolve().parent.parent
+
+
+def _resolve_config_dir() -> Path:
+    """解析 config/ 目录路径。
+
+    打包模式下优先用 exe 同级目录的 config/（用户可修改覆盖）；
+    若不存在则回退到 _MEIPASS 内置的 config/。
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        user_config = exe_dir / "config"
+        if user_config.exists():
+            return user_config
+        # 回退到 PyInstaller 内置资源
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass) / "config"
+    return _resolve_project_root() / "config"
+
+
+PROJECT_ROOT = _resolve_project_root()
+DEFAULT_CONFIG_DIR = _resolve_config_dir()
 
 
 class InstagramSettings(BaseModel):
@@ -88,6 +122,13 @@ class OutputSettings(BaseModel):
     formats: list[str] = Field(default_factory=lambda: ["csv", "json", "xlsx"])
 
 
+def _resolve_env_file() -> str:
+    """解析 .env 文件路径（打包后从 exe 同级目录读取）。"""
+    if getattr(sys, "frozen", False):
+        return str(Path(sys.executable).resolve().parent / ".env")
+    return ".env"
+
+
 class Settings(BaseSettings):
     """项目主配置。
 
@@ -96,7 +137,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="",
-        env_file=".env",
+        env_file=_resolve_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
