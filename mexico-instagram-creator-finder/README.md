@@ -910,6 +910,57 @@ Copyright (c) 2026 Mexico Instagram Creator Finder Contributors
 
 ---
 
+## 19. Chrome 扩展达人发现闭环
+
+NiceGUI 的“新建搜索”支持自然语言 Brief、种子主页、Hashtag、公开关注/粉丝列表以及最多 100 条主页链接。
+创建任务后，扩展在当前可见 Instagram 标签页中按 4—8 秒间隔顺序访问，补全公开主页和最近最多 12 条公开内容。
+Brief 可以自动生成最多 5 个关键词搜索入口；种子主页只会从明确的“相似/推荐账号”区域扩展一层。
+任务严格遵守最大分析账号数：种子已经占满名额时，不再为 Hashtag 批量加入无意义的媒体跳转。
+
+自动发现的资料先进入“候选池”，不会自动成为最终名单。分析完成后，扩展侧边栏会逐个显示达人卡片：
+
+1. 点击“加入达人库”保存到全局达人库；
+2. 点击“跳过”记录已查看状态；
+3. 后续任务会跳过已保存或已查看账号，减少重复访问；
+4. “博主结果”默认显示全部可人工判断候选，可切换到严格匹配、被筛选或数据补全中；
+5. 本地相似度综合 Brief、种子、Bio、Caption、垂类、地区、活跃度和发现来源，并显示最相似种子；
+6. CSV、JSON、XLSX 会包含相似度、数据质量、发现来源、审核状态和入库时间。
+
+扩展 `0.5.0` 使用统一采集结果契约。媒体作者依次从页面 Meta、可见作者区域、结构化数据和页面已渲染数据中解析；成功发现作者后会优先补全其主页，使达人卡片尽快出现在侧边栏。页面字段缺失会记录为失败或“数据不可用”，不会再向接口提交残缺媒体数据；公开主页的私密状态只依据明确的私密空状态判断。任务诊断事件可通过以下接口读取：
+
+```text
+GET  /api/extension/tasks/{task_id}/events
+POST /api/extension/tasks/{task_id}/retry-failed
+POST /api/extension/tasks/{task_id}/rerank
+```
+
+`retry-failed` 接口只重新排队普通、可重试的页面失败；422 数据契约错误、Challenge、登录失效、429和安全警告不会自动重试。GUI 运行日志写入 `logs/app.log`，采用轮转文件并执行敏感信息脱敏。
+
+`rerank` 接口接收自然语言 `brief`，只使用本地已采集数据重新计算匹配分和排序，不会再次请求 Instagram。结果页也提供“用自然语言重新匹配现有候选”输入框。匹配分综合 Brief、种子、Bio、Category、Caption、Hashtag、地区/语言、粉丝区间、互动、活跃度、账号类型、公开联系方式和发现来源，并返回可解释理由。
+
+达到 `max_profiles_to_analyze` 后，任务会把尚未处理的 Hashtag、关键词、公开列表、额外作者主页和发现媒体标记为 `skipped_budget`；只允许已分析账号仍需补全的近期媒体完成，随后自动结束。已经访问过的媒体会复用于账号分析，不会因队列去重长期停留在“媒体补全中”。
+
+扩展令牌只用于 Chrome 扩展与本机服务之间的鉴权。只要侧边栏显示“已连接”且能看到任务事件，就不需要额外的搜索 Token；Instagram 公开作者发现来自当前已登录、可见标签页。`media_author_unresolved` 事件会附带不含 Cookie/令牌的 DOM 诊断字段，便于兼容 Instagram 页面改版。
+
+本地 `instagrapi` 适配层提供实验性的只读 `search_users`、`related_profiles`、Hashtag 和近期媒体方法，但默认不启用。它需要有效的本地 Session，仍属于非官方接口并受相同的4–8秒间隔、安全停止和平台兼容性约束；不能将其当作无限速的官方达人搜索 API。
+
+开发时加载扩展：
+
+```powershell
+# Chrome → 扩展程序 → 开发者模式 → 加载已解压的扩展程序
+# 选择：browser_extension
+```
+
+`browser_extension/` 是正式源码目录。需要生成兼容目录时执行：
+
+```powershell
+python scripts/sync_chrome_extension.py
+```
+
+生成的 `dist/chrome_extension/` 继续供现有安装和打包流程使用。更新扩展后，请在 `chrome://extensions` 中点击该扩展的“重新加载”。扩展检测到登录页、Challenge、限流或安全警告时会安全停止；普通页面加载失败最多重试两次。
+
+---
+
 ## 最终原则
 
 当功能便利性、搜索数量和安全性冲突时：

@@ -47,6 +47,10 @@ class ExtensionProfileData(_ExtBase):
     is_verified: bool | None = None
     is_business: bool | None = None
     category_name: str | None = None
+    public_email: str | None = None
+    is_private: bool | None = None
+    profile_pic_url: str | None = None
+    field_sources: dict[str, str] = Field(default_factory=dict)
 
 
 class ExtensionCandidateItem(_ExtBase):
@@ -66,6 +70,8 @@ class ExtensionProfilePayload(_ExtBase):
     page_url: str
     profile: ExtensionProfileData
     visible_recommendations: list[ExtensionCandidateItem] = Field(default_factory=list)
+    recent_media_urls: list[str] = Field(default_factory=list, max_length=12)
+    collection_version: str = "0.4.0"
 
 
 class ExtensionCandidatesPayload(_ExtBase):
@@ -107,3 +113,70 @@ class CandidatesIngestResult(_ExtBase):
     new: int = 0
     duplicates: int = 0
     excluded: int = 0
+
+
+class ExtensionTaskCreate(_ExtBase):
+    brief: str = ""
+    seeds: list[str] = Field(default_factory=list)
+    hashtags: list[str] = Field(default_factory=list)
+    bulk_links: list[str] = Field(default_factory=list, max_length=100)
+    public_list_urls: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    min_followers: int | None = None
+    max_followers: int | None = None
+    minimum_median_reel_views: int | None = None
+    maximum_days_since_last_post: int | None = None
+    require_mexico_signal: bool | None = None
+    require_public_contact: bool | None = None
+    require_public_account: bool | None = None
+    exclude_brands: bool | None = None
+    exclude_media_accounts: bool | None = None
+    target_niches: list[str] = Field(default_factory=list)
+    max_profiles_to_analyze: int = Field(default=100, ge=1, le=500)
+
+
+class TaskCandidatesPayload(_ExtBase):
+    queue_item_id: int | None = None
+    source_page_url: str
+    source_type: str
+    candidates: list[ExtensionCandidateItem]
+    media_urls: list[str] = Field(default_factory=list)
+
+
+class TaskProfilePayload(ExtensionProfilePayload):
+    queue_item_id: int | None = None
+
+
+class ExtensionMediaPayload(_ExtBase):
+    queue_item_id: int | None = None
+    username: str
+    media_url: str
+    shortcode: str
+    media_type: str = "post"
+    taken_at: datetime | None = None
+    caption: str | None = None
+    like_count: int | None = None
+    comment_count: int | None = None
+    visible_play_count: int | None = None
+    is_reel: bool = False
+    collected_at: datetime
+    mentioned_usernames: list[str] = Field(default_factory=list, max_length=20)
+    field_sources: dict[str, str | None] = Field(default_factory=dict)
+
+
+class QueueFailurePayload(_ExtBase):
+    queue_item_id: int
+    error: str
+    safe_stop: bool = False
+    retryable: bool = True
+    error_code: str = "collection_error"
+    diagnostics: dict[str, str | int | bool | None] = Field(default_factory=dict)
+
+
+class TaskRerankPayload(_ExtBase):
+    brief: str = Field(min_length=2, max_length=2000)
+
+
+class CreatorReviewAction(_ExtBase):
+    list_name: str = "默认达人库"
+    note: str | None = None

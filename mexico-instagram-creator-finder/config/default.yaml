@@ -9,6 +9,7 @@ instagram:
 discovery:
   max_hashtags: 15
   media_per_hashtag: 20
+  max_discovery_media: 100
   max_candidates: 300
   max_profiles_to_analyze: 100
   seed_expansion_depth: 1
@@ -24,6 +25,7 @@ filters:
   minimum_median_reel_views: 2000
   exclude_brands: true
   exclude_media_accounts: true
+  require_public_contact: false
 
 analysis:
   recent_media_amount: 12

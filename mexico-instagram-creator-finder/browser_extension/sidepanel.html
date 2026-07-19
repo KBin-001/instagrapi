@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>达人发现</title><link rel="stylesheet" href="sidepanel.css"></head>
+<body><main>
+  <h1>达人发现</h1><p class="muted">自动发现与分析，喜欢的达人再加入你的库。</p>
+  <details><summary>本地连接设置</summary>
+    <label>本地接口<input id="api-url" placeholder="http://127.0.0.1:8888"></label>
+    <label>扩展令牌<input id="api-token" type="password"></label><button id="save">保存并测试</button>
+  </details>
+  <section><div id="status">未连接</div><div id="task">当前无任务</div><div id="progress"></div><div id="recent-candidates" class="muted"></div></section>
+  <div class="grid"><button id="start">开始</button><button id="pause">暂停</button><button id="resume">继续</button><button id="stop" class="danger">停止</button></div>
+  <button id="retry-failed" class="secondary">重新分析可重试失败项</button>
+  <section id="diagnostics" class="muted">暂无诊断事件</section>
+  <article id="review-card" class="review-card hidden">
+    <div class="review-head"><img id="creator-avatar" alt=""><div><strong id="creator-name"></strong><div id="creator-username" class="muted"></div></div><span id="creator-score"></span></div>
+    <p id="creator-bio"></p>
+    <div id="creator-metrics" class="metrics"></div>
+    <div id="creator-source" class="source"></div>
+    <div class="grid"><button id="save-creator">加入达人库</button><button id="skip-creator" class="secondary">跳过</button></div>
+    <button id="open-profile" class="secondary">打开主页</button>
+  </article>
+  <section id="review-empty">自动分析完成的候选会出现在这里。</section>
+  <button id="return" class="secondary">返回起始页</button><pre id="log"></pre>
+</main><script src="sidepanel.js"></script></body></html>

@@ -64,7 +64,7 @@ if not hasattr(pkgutil, "find_loader"):  # pragma: no cover - 兼容性补丁
 from app.gui.state import gui_state
 from app.logging_config import get_logger, setup_logging
 
-setup_logging()
+setup_logging(log_file="logs/app.log")
 logger = get_logger("gui.main")
 
 
@@ -729,8 +729,15 @@ def _pick_available_port(preferred: int = 8080) -> int:
     # 候选端口：常用端口 + 高位端口（高位端口极少被排除）
     candidates = [
         preferred,
-        8888, 8889, 8890, 8090, 9000,  # 常用备选
-        18080, 28080, 38080, 48080,  # 高位备选，几乎不会被 Hyper-V 排除
+        8888,
+        8889,
+        8890,
+        8090,
+        9000,  # 常用备选
+        18080,
+        28080,
+        38080,
+        48080,  # 高位备选，几乎不会被 Hyper-V 排除
     ]
     for port in candidates:
         if is_bindable(port):
@@ -802,6 +809,7 @@ if __name__ == "__main__":
         main()
     except Exception:
         import traceback
+
         # 打包环境下把崩溃日志写到 exe 同级目录，方便用户反馈
         _log_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.getcwd()
         try:

@@ -21,6 +21,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -44,6 +45,7 @@ class TaskRow(Base):
     completed_at = Column(DateTime, nullable=True)
     stop_reason = Column(Text, nullable=True)
     config_snapshot = Column(Text, nullable=True)  # JSON 快照（脱敏）
+    search_intent = Column(Text, nullable=True)  # SearchIntent JSON
 
     # ===== 进度持久化字段（GUI 实时显示用）=====
     # 即使页面刷新/WebSocket 重连/GUI 重启，也能从 SQLite 恢复最新进度
@@ -87,6 +89,95 @@ class CandidateRow(Base):
     excluded = Column(Integer, default=0)
     exclusion_source = Column(Text, nullable=True)
     exclusion_reason = Column(Text, nullable=True)
+    discovery_sources = Column(Text, nullable=True)  # JSON list
+    match_status = Column(String, default="incomplete")
+    filter_reasons = Column(Text, nullable=True)  # JSON list
+    last_analyzed_at = Column(DateTime, nullable=True)
+    review_status = Column(String, default="pending")  # pending/saved/skipped
+    reviewed_at = Column(DateTime, nullable=True)
+    similarity_score = Column(Float, default=0.0)
+    similarity_breakdown = Column(Text, nullable=True)
+    reference_seed = Column(String, nullable=True)
+    data_quality_status = Column(String, default="incomplete")
+    collection_version = Column(String, nullable=True)
+
+
+class TaskQueueRow(Base):
+    """浏览器扩展顺序消费的持久化任务队列。"""
+
+    __tablename__ = "task_queue"
+    __table_args__ = (UniqueConstraint("task_id", "dedupe_key", name="uq_task_queue_dedupe"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String, index=True, nullable=False)
+    page_type = Column(String, nullable=False)  # profile/hashtag/media/public_list
+    username = Column(String, index=True, nullable=True)
+    url = Column(Text, nullable=False)
+    dedupe_key = Column(String, nullable=False)
+    source_type = Column(String, nullable=False)
+    source_value = Column(Text, nullable=True)
+    depth = Column(Integer, default=0)
+    priority = Column(Integer, default=100)
+    status = Column(String, default="pending", index=True)
+    attempt_count = Column(Integer, default=0)
+    claimed_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    error_reason = Column(Text, nullable=True)
+    error_code = Column(String, nullable=True)
+    retryable = Column(Integer, default=1)
+    created_at = Column(DateTime, nullable=False)
+
+
+class TaskEventRow(Base):
+    """脱敏的任务诊断事件。"""
+
+    __tablename__ = "task_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String, index=True, nullable=False)
+    queue_item_id = Column(Integer, nullable=True)
+    event_type = Column(String, index=True, nullable=False)
+    page_type = Column(String, nullable=True)
+    username = Column(String, nullable=True)
+    message = Column(Text, nullable=True)
+    error_code = Column(String, nullable=True)
+    retryable = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+
+class MediaItemRow(Base):
+    """单条公开内容摘要；不保存图片或视频。"""
+
+    __tablename__ = "media_items"
+    __table_args__ = (UniqueConstraint("task_id", "shortcode", name="uq_media_task_shortcode"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String, index=True, nullable=False)
+    username = Column(String, index=True, nullable=False)
+    media_url = Column(Text, nullable=False)
+    shortcode = Column(String, nullable=False)
+    media_type = Column(String, default="post")
+    taken_at = Column(DateTime, nullable=True)
+    caption = Column(Text, nullable=True)
+    like_count = Column(Integer, nullable=True)
+    comment_count = Column(Integer, nullable=True)
+    visible_play_count = Column(Integer, nullable=True)
+    is_reel = Column(Integer, default=0)
+    collected_at = Column(DateTime, nullable=False)
+    field_sources = Column(Text, nullable=True)
+
+
+class CreatorLibraryRow(Base):
+    """用户人工确认加入的全局达人库。"""
+
+    __tablename__ = "creator_library"
+
+    username = Column(String, primary_key=True)
+    saved_from_task_id = Column(String, nullable=False, index=True)
+    saved_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+    list_name = Column(String, default="默认达人库")
+    note = Column(Text, nullable=True)
 
 
 class ProfileRow(Base):
@@ -110,6 +201,7 @@ class ProfileRow(Base):
     business_category_name = Column(Text, nullable=True)
     external_url = Column(Text, nullable=True)
     public_email = Column(Text, nullable=True)
+    field_sources = Column(Text, nullable=True)
     collected_at = Column(DateTime)
 
 
@@ -228,17 +320,18 @@ class Database:
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(self.engine)
-        self._migrate_task_progress_columns()
+        self._migrate_additive_columns()
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
-        logger.info("database initialized at %s", self.database_file)
+        logger.debug("database initialized at %s", self.database_file)
 
-    def _migrate_task_progress_columns(self) -> None:
+    def _migrate_additive_columns(self) -> None:
         """自动为旧版 tasks 表添加进度持久化列（ALTER TABLE ADD COLUMN）。
 
         幂等：已存在的列会跳过。SQLite 不支持 IF NOT EXISTS，所以用 PRAGMA 检查。
         """
         # 期望的列名列表（与 TaskRow 中的进度字段一致）
         progress_columns: list[tuple[str, str]] = [
+            ("search_intent", "TEXT"),
             ("stage", "VARCHAR"),
             ("progress_message", "TEXT"),
             ("current_hashtag", "VARCHAR"),
@@ -259,12 +352,35 @@ class Database:
             with self.engine.connect() as conn:
                 from sqlalchemy import text
 
-                rows = conn.execute(text("PRAGMA table_info(tasks)")).fetchall()
-                existing_cols = {r[1] for r in rows}  # r[1] 是列名
-                for col_name, col_type in progress_columns:
-                    if col_name not in existing_cols:
-                        conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {col_name} {col_type}"))
-                        logger.info("migrated tasks table: added column %s", col_name)
+                table_columns = {
+                    "tasks": progress_columns,
+                    "candidates": [
+                        ("discovery_sources", "TEXT"),
+                        ("match_status", "VARCHAR DEFAULT 'incomplete'"),
+                        ("filter_reasons", "TEXT"),
+                        ("last_analyzed_at", "DATETIME"),
+                        ("review_status", "VARCHAR DEFAULT 'pending'"),
+                        ("reviewed_at", "DATETIME"),
+                        ("similarity_score", "FLOAT DEFAULT 0"),
+                        ("similarity_breakdown", "TEXT"),
+                        ("reference_seed", "VARCHAR"),
+                        ("data_quality_status", "VARCHAR DEFAULT 'incomplete'"),
+                        ("collection_version", "VARCHAR"),
+                    ],
+                    "task_queue": [
+                        ("error_code", "VARCHAR"),
+                        ("retryable", "INTEGER DEFAULT 1"),
+                    ],
+                    "profiles": [("field_sources", "TEXT")],
+                    "media_items": [("field_sources", "TEXT")],
+                }
+                for table_name, columns in table_columns.items():
+                    rows = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+                    existing_cols = {r[1] for r in rows}
+                    for col_name, col_type in columns:
+                        if col_name not in existing_cols:
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+                            logger.info("migrated %s table: added column %s", table_name, col_name)
                 conn.commit()
         except Exception as e:  # noqa: BLE001 - 迁移失败不应阻塞启动
             logger.warning("task progress migration skipped: %s", e)

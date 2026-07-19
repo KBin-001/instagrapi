@@ -1,6 +1,6 @@
 """浏览器扩展通信模块。
 
-为 Chrome 扩展（dist/chrome_extension/）提供本地 HTTP 接口，接收扩展从
+为 Chrome 扩展（browser_extension/）提供本地 HTTP 接口，接收扩展从
 Instagram 官方网页采集的公开数据，落库到 SQLite，复用现有的分析、
 评分、导出模块。
 

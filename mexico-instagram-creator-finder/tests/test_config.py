@@ -46,6 +46,7 @@ def test_default_config_has_discovery_limits() -> None:
     settings = build_settings()
     assert settings.discovery.max_hashtags == 15
     assert settings.discovery.media_per_hashtag == 20
+    assert settings.discovery.max_discovery_media == 100
     assert settings.discovery.max_candidates == 300
 
 

@@ -20,7 +20,6 @@ from nicegui import ui
 from app.config import to_display_dict, validate_settings
 from app.gui.state import gui_state
 
-
 # ===== 目录工具 =====
 
 
@@ -168,9 +167,7 @@ def _build_extension_card() -> None:
                 # 通过前端 JS 写入剪贴板
                 import json
 
-                ui.run_javascript(
-                    f"navigator.clipboard.writeText({json.dumps(url)})"
-                )
+                ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(url)})")
                 ui.notify(f"已复制：{url}", type="positive", position="top", timeout=3000)
             except Exception as e:  # noqa: BLE001
                 ui.notify(f"复制失败：{e}", type="negative", position="top")
@@ -198,9 +195,9 @@ def _build_extension_card() -> None:
         def on_regen(_):
             with ui.dialog() as dialog, ui.card().classes("w-96"):
                 ui.label("重新生成本地令牌").classes("text-lg font-bold mb-2")
-                ui.label(
-                    "已连接的扩展将立即断开。需要在 Chrome 扩展中重新粘贴新令牌才能恢复。"
-                ).classes("text-grey-7 text-sm mb-3")
+                ui.label("已连接的扩展将立即断开。需要在 Chrome 扩展中重新粘贴新令牌才能恢复。").classes(
+                    "text-grey-7 text-sm mb-3"
+                )
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("取消", color="grey").props("flat").on("click", lambda _: dialog.close())
 

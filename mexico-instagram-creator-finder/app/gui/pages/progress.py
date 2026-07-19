@@ -36,6 +36,8 @@ _STAGE_LABELS: dict[str, str] = {
     STAGE_DEDUPLICATION: "去重",
     STAGE_EXCLUSION: "应用排除",
     STAGE_PROFILE_ANALYSIS: "账号分析",
+    "profile_enrichment": "主页补全",
+    "media_analysis": "媒体分析",
     STAGE_EXPORT: "导出",
     STAGE_COMPLETED: "完成",
 }
@@ -51,6 +53,8 @@ _STATUS_LABELS: dict[str, str] = {
     "failed": "失败",
     "rate_limited": "被限流",
     "verification_required": "需验证",
+    "waiting_extension": "等待扩展",
+    "safe_stopped": "安全停止",
 }
 
 

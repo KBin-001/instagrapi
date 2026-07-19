@@ -26,6 +26,7 @@ EXPORT_FIELDS: list[str] = [
     "biography",
     "external_url",
     "profile_pic_url",
+    "field_sources",
     "public_email",
     "public_whatsapp_url",
     "linktree_url",
@@ -59,6 +60,18 @@ EXPORT_FIELDS: list[str] = [
     "recommendation_level",
     "recommendation_reasons",
     "source_hashtags",
+    "discovery_sources",
+    "match_status",
+    "filter_reasons",
+    "last_analyzed_at",
+    "review_status",
+    "in_library",
+    "library_saved_at",
+    "similarity_score",
+    "similarity_breakdown",
+    "reference_seed",
+    "data_quality_status",
+    "collection_version",
 ]
 
 # 字段中文标签（CSV/XLSX 表头使用「中文 (english)」格式；JSON 保持英文 key）
@@ -77,6 +90,7 @@ EXPORT_FIELD_LABELS: dict[str, str] = {
     "biography": "个人简介",
     "external_url": "外部链接",
     "profile_pic_url": "头像链接",
+    "field_sources": "字段来源",
     "public_email": "公开邮箱",
     "public_whatsapp_url": "WhatsApp链接",
     "linktree_url": "Linktree链接",
@@ -110,6 +124,18 @@ EXPORT_FIELD_LABELS: dict[str, str] = {
     "recommendation_level": "推荐级别",
     "recommendation_reasons": "推荐理由",
     "source_hashtags": "来源Hashtag",
+    "discovery_sources": "发现来源",
+    "match_status": "匹配状态",
+    "filter_reasons": "筛选原因",
+    "last_analyzed_at": "最后分析时间",
+    "review_status": "审核状态",
+    "in_library": "已加入达人库",
+    "library_saved_at": "入库时间",
+    "similarity_score": "相似度评分",
+    "similarity_breakdown": "相似度明细",
+    "reference_seed": "参考种子",
+    "data_quality_status": "数据质量状态",
+    "collection_version": "采集器版本",
 }
 
 
@@ -145,7 +171,7 @@ def sort_records(records: list[CreatorRecord]) -> list[CreatorRecord]:
             else 0.0
         )
         followers = r.profile.follower_count or 0
-        return (-score, -median_views, -followers)
+        return (-r.similarity_score, -score, -median_views, -followers)
 
     return sorted(records, key=sort_key)
 
@@ -175,6 +201,7 @@ def record_to_dict(record: CreatorRecord) -> dict[str, Any]:
         "biography": p.biography,
         "external_url": p.external_url,
         "profile_pic_url": p.profile_pic_url,
+        "field_sources": p.field_sources,
         "public_email": c.public_email if c else (p.public_email or None),
         "public_whatsapp_url": c.public_whatsapp_url if c else None,
         "linktree_url": c.linktree_url if c else None,
@@ -207,9 +234,19 @@ def record_to_dict(record: CreatorRecord) -> dict[str, Any]:
         "score_breakdown": s.score_breakdown if s else {},
         "recommendation_level": s.recommendation_level if s else "D",
         "recommendation_reasons": s.recommendation_reasons if s else [],
-        # CreatorRecord 不直接保存 source_hashtags（来自 CandidateAccount），
-        # 此处保留字段位以兼容导出列。
-        "source_hashtags": [],
+        "source_hashtags": [s for s in record.discovery_sources if s.startswith("hashtag:")],
+        "discovery_sources": record.discovery_sources,
+        "match_status": record.match_status,
+        "filter_reasons": record.filter_reasons,
+        "last_analyzed_at": record.last_analyzed_at.isoformat() if record.last_analyzed_at else None,
+        "review_status": record.review_status,
+        "in_library": record.in_library,
+        "library_saved_at": record.library_saved_at.isoformat() if record.library_saved_at else None,
+        "similarity_score": record.similarity_score,
+        "similarity_breakdown": record.similarity_breakdown,
+        "reference_seed": record.reference_seed,
+        "data_quality_status": record.data_quality_status,
+        "collection_version": record.collection_version,
     }
 
 

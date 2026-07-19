@@ -94,6 +94,7 @@ class InstagramSettings(BaseModel):
 class DiscoverySettings(BaseModel):
     max_hashtags: int = 15
     media_per_hashtag: int = 20
+    max_discovery_media: int = 100
     max_candidates: int = 300
     max_profiles_to_analyze: int = 100
     seed_expansion_depth: int = 1
@@ -110,6 +111,7 @@ class FilterSettings(BaseModel):
     minimum_median_reel_views: int = 2000
     exclude_brands: bool = True
     exclude_media_accounts: bool = True
+    require_public_contact: bool = False
 
     @field_validator("max_followers")
     @classmethod
@@ -304,6 +306,8 @@ def validate_settings(settings: Settings, skip_credentials: bool = False) -> lis
         errors.append("max_hashtags 必须 >= 1")
     if settings.discovery.media_per_hashtag < 1:
         errors.append("media_per_hashtag 必须 >= 1")
+    if settings.discovery.max_discovery_media < 1:
+        errors.append("max_discovery_media 必须 >= 1")
     if settings.discovery.max_candidates < 1:
         errors.append("max_candidates 必须 >= 1")
 

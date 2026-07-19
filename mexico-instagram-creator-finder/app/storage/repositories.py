@@ -10,7 +10,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.logging_config import get_logger
@@ -19,6 +19,7 @@ from app.models import (
     CandidateAccount,
     ContactInfo,
     CreatorRecord,
+    ExtensionMediaData,
     MediaMetrics,
     MexicoSignal,
     NicheClassification,
@@ -29,12 +30,16 @@ from app.storage.database import (
     AccountTypeRow,
     CandidateRow,
     ContactRow,
+    CreatorLibraryRow,
     HashtagRow,
+    MediaItemRow,
     MediaStatsRow,
     MexicoSignalRow,
     NicheRow,
     ProfileRow,
     ScoreRow,
+    TaskEventRow,
+    TaskQueueRow,
     TaskRow,
 )
 
@@ -72,6 +77,7 @@ def upsert_task(
     completed_at: datetime | None = None,
     stop_reason: str | None = None,
     config_snapshot: dict | None = None,
+    search_intent: dict | None = None,
 ) -> None:
     row = session.get(TaskRow, task_id)
     now = _now()
@@ -84,6 +90,7 @@ def upsert_task(
             completed_at=completed_at,
             stop_reason=stop_reason,
             config_snapshot=_json_dumps(config_snapshot) if config_snapshot else None,
+            search_intent=_json_dumps(search_intent) if search_intent else None,
         )
         session.add(row)
     else:
@@ -97,6 +104,8 @@ def upsert_task(
             row.stop_reason = stop_reason
         if config_snapshot is not None:
             row.config_snapshot = _json_dumps(config_snapshot)
+        if search_intent is not None:
+            row.search_intent = _json_dumps(search_intent)
     session.commit()
 
 
@@ -116,6 +125,204 @@ def get_latest_task(session: Session) -> TaskRow | None:
 def get_recent_tasks(session: Session, limit: int = 10) -> list[TaskRow]:
     """获取最近 N 个任务（按 started_at 倒序）。"""
     stmt = select(TaskRow).order_by(TaskRow.started_at.desc()).limit(limit)
+    return list(session.execute(stmt).scalars())
+
+
+def get_active_extension_task(session: Session) -> TaskRow | None:
+    statuses = ("waiting_extension", "running", "paused", "safe_stopped")
+    stmt = select(TaskRow).where(TaskRow.status.in_(statuses)).order_by(TaskRow.updated_at.desc()).limit(1)
+    return session.execute(stmt).scalar_one_or_none()
+
+
+# ---- Extension queue ----
+
+
+def enqueue_task_item(
+    session: Session,
+    *,
+    task_id: str,
+    page_type: str,
+    url: str,
+    dedupe_key: str,
+    source_type: str,
+    username: str | None = None,
+    source_value: str | None = None,
+    depth: int = 0,
+    priority: int = 100,
+) -> TaskQueueRow | None:
+    existing = session.execute(
+        select(TaskQueueRow).where(TaskQueueRow.task_id == task_id, TaskQueueRow.dedupe_key == dedupe_key)
+    ).scalar_one_or_none()
+    if existing is not None:
+        return None
+    row = TaskQueueRow(
+        task_id=task_id,
+        page_type=page_type,
+        username=username,
+        url=url,
+        dedupe_key=dedupe_key,
+        source_type=source_type,
+        source_value=source_value,
+        depth=depth,
+        priority=priority,
+        status="pending",
+        created_at=_now(),
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def claim_next_task_item(session: Session, task_id: str) -> TaskQueueRow | None:
+    """条件更新领取下一项，避免同一项被两个扩展实例重复领取。"""
+    while True:
+        item_id = session.execute(
+            select(TaskQueueRow.id)
+            .where(TaskQueueRow.task_id == task_id, TaskQueueRow.status == "pending")
+            .order_by(TaskQueueRow.priority.asc(), TaskQueueRow.id.asc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if item_id is None:
+            return None
+        claimed_at = _now()
+        result = session.execute(
+            update(TaskQueueRow)
+            .where(TaskQueueRow.id == item_id, TaskQueueRow.status == "pending")
+            .values(status="claimed", claimed_at=claimed_at, attempt_count=TaskQueueRow.attempt_count + 1)
+        )
+        session.commit()
+        if result.rowcount == 1:
+            return session.get(TaskQueueRow, item_id)
+
+
+def finish_task_item(
+    session: Session,
+    item_id: int,
+    *,
+    status: str = "completed",
+    error_reason: str | None = None,
+    retry_limit: int = 2,
+    retryable: bool = True,
+    error_code: str | None = None,
+) -> TaskQueueRow | None:
+    row = session.get(TaskQueueRow, item_id)
+    if row is None:
+        return None
+    if status == "failed" and retryable and row.attempt_count <= retry_limit:
+        row.status = "pending"
+    else:
+        row.status = status
+        row.completed_at = _now()
+    row.error_reason = error_reason
+    row.error_code = error_code
+    row.retryable = int(retryable)
+    session.commit()
+    return row
+
+
+def add_task_event(
+    session: Session,
+    task_id: str,
+    event_type: str,
+    *,
+    queue_item_id: int | None = None,
+    page_type: str | None = None,
+    username: str | None = None,
+    message: str | None = None,
+    error_code: str | None = None,
+    retryable: bool | None = None,
+) -> TaskEventRow:
+    row = TaskEventRow(
+        task_id=task_id,
+        queue_item_id=queue_item_id,
+        event_type=event_type,
+        page_type=page_type,
+        username=username,
+        message=message,
+        error_code=error_code,
+        retryable=None if retryable is None else int(retryable),
+        created_at=_now(),
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def list_task_events(session: Session, task_id: str, limit: int = 200) -> list[TaskEventRow]:
+    stmt = (
+        select(TaskEventRow)
+        .where(TaskEventRow.task_id == task_id)
+        .order_by(TaskEventRow.id.desc())
+        .limit(max(1, min(limit, 1000)))
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def retry_failed_task_items(session: Session, task_id: str) -> int:
+    result = session.execute(
+        update(TaskQueueRow)
+        .where(
+            TaskQueueRow.task_id == task_id,
+            TaskQueueRow.status == "failed",
+            TaskQueueRow.retryable == 1,
+        )
+        .values(status="pending", claimed_at=None, completed_at=None, error_reason=None, error_code=None)
+    )
+    session.commit()
+    return int(result.rowcount or 0)
+
+
+def queue_counts(session: Session, task_id: str) -> dict[str, int]:
+    rows = session.execute(
+        select(TaskQueueRow.status, func.count(TaskQueueRow.id))
+        .where(TaskQueueRow.task_id == task_id)
+        .group_by(TaskQueueRow.status)
+    ).all()
+    return {status: count for status, count in rows}
+
+
+def reset_claimed_task_items(session: Session, task_id: str) -> int:
+    """浏览器或应用重启后，把未提交的 claimed 项恢复为 pending。"""
+    result = session.execute(
+        update(TaskQueueRow)
+        .where(TaskQueueRow.task_id == task_id, TaskQueueRow.status == "claimed")
+        .values(status="pending", claimed_at=None)
+    )
+    session.commit()
+    return int(result.rowcount or 0)
+
+
+def upsert_media_item(session: Session, task_id: str, media: ExtensionMediaData) -> None:
+    row = session.execute(
+        select(MediaItemRow).where(MediaItemRow.task_id == task_id, MediaItemRow.shortcode == media.shortcode)
+    ).scalar_one_or_none()
+    fields = {
+        "username": media.username.lower(),
+        "media_url": media.media_url,
+        "media_type": media.media_type,
+        "taken_at": media.taken_at,
+        "caption": media.caption,
+        "like_count": media.like_count,
+        "comment_count": media.comment_count,
+        "visible_play_count": media.visible_play_count,
+        "is_reel": int(media.is_reel),
+        "collected_at": media.collected_at,
+        "field_sources": _json_dumps(media.field_sources),
+    }
+    if row is None:
+        session.add(MediaItemRow(task_id=task_id, shortcode=media.shortcode, **fields))
+    else:
+        for key, value in fields.items():
+            setattr(row, key, value)
+    session.commit()
+
+
+def list_media_items(session: Session, task_id: str, username: str) -> list[MediaItemRow]:
+    stmt = (
+        select(MediaItemRow)
+        .where(MediaItemRow.task_id == task_id, MediaItemRow.username == username.lower())
+        .order_by(MediaItemRow.taken_at.desc())
+    )
     return list(session.execute(stmt).scalars())
 
 
@@ -304,6 +511,68 @@ def get_candidate(session: Session, task_id: str, username: str) -> CandidateRow
     return session.execute(stmt).scalar_one_or_none()
 
 
+def set_candidate_review_status(session: Session, task_id: str, username: str, status: str) -> CandidateRow | None:
+    row = get_candidate(session, task_id, username.lower())
+    if row is None:
+        return None
+    row.review_status = status
+    row.reviewed_at = _now()
+    session.commit()
+    return row
+
+
+def save_creator_to_library(
+    session: Session,
+    task_id: str,
+    username: str,
+    *,
+    list_name: str = "默认达人库",
+    note: str | None = None,
+) -> CreatorLibraryRow:
+    username = username.lower()
+    row = session.get(CreatorLibraryRow, username)
+    now = _now()
+    if row is None:
+        row = CreatorLibraryRow(
+            username=username,
+            saved_from_task_id=task_id,
+            saved_at=now,
+            updated_at=now,
+            list_name=list_name,
+            note=note,
+        )
+        session.add(row)
+    else:
+        row.saved_from_task_id = task_id
+        row.updated_at = now
+        row.list_name = list_name
+        if note is not None:
+            row.note = note
+    set_candidate_review_status(session, task_id, username, "saved")
+    session.commit()
+    return row
+
+
+def remove_creator_from_library(session: Session, username: str) -> bool:
+    row = session.get(CreatorLibraryRow, username.lower())
+    if row is None:
+        return False
+    session.delete(row)
+    session.commit()
+    return True
+
+
+def get_library_creator(session: Session, username: str) -> CreatorLibraryRow | None:
+    return session.get(CreatorLibraryRow, username.lower())
+
+
+def list_library_creators(session: Session, list_name: str | None = None) -> list[CreatorLibraryRow]:
+    stmt = select(CreatorLibraryRow)
+    if list_name:
+        stmt = stmt.where(CreatorLibraryRow.list_name == list_name)
+    return list(session.execute(stmt.order_by(CreatorLibraryRow.saved_at.desc())).scalars())
+
+
 # ---- Profile ----
 
 
@@ -326,6 +595,7 @@ def upsert_profile(session: Session, profile: ProfileData, task_id: str) -> None
         business_category_name=profile.business_category_name,
         external_url=profile.external_url,
         public_email=profile.public_email,
+        field_sources=_json_dumps(profile.field_sources),
         collected_at=profile.collected_at,
     )
     if row is None:
@@ -511,6 +781,10 @@ def load_all_records(session: Session, task_id: str) -> list[CreatorRecord]:
         arow = session.execute(
             select(AccountTypeRow).where(AccountTypeRow.task_id == task_id, AccountTypeRow.username == username)
         ).scalar_one_or_none()
+        candidate_row = session.execute(
+            select(CandidateRow).where(CandidateRow.task_id == task_id, CandidateRow.username == username)
+        ).scalar_one_or_none()
+        library_row = session.get(CreatorLibraryRow, username)
 
         profile = ProfileData(
             username=username,
@@ -529,6 +803,7 @@ def load_all_records(session: Session, task_id: str) -> list[CreatorRecord]:
             business_category_name=prow.business_category_name,
             external_url=prow.external_url,
             public_email=prow.public_email,
+            field_sources=_json_loads(prow.field_sources, {}),
             collected_at=prow.collected_at or _now(),
         )
 
@@ -608,6 +883,23 @@ def load_all_records(session: Session, task_id: str) -> list[CreatorRecord]:
                 mexico=mexico,
                 account_type=account_type,
                 score=score,
+                excluded=bool(candidate_row.excluded) if candidate_row else False,
+                exclusion_source=candidate_row.exclusion_source if candidate_row else None,
+                exclusion_reason=candidate_row.exclusion_reason if candidate_row else None,
+                discovery_sources=_json_loads(candidate_row.discovery_sources, []) if candidate_row else [],
+                match_status=(candidate_row.match_status or "incomplete") if candidate_row else "incomplete",
+                filter_reasons=_json_loads(candidate_row.filter_reasons, []) if candidate_row else [],
+                last_analyzed_at=candidate_row.last_analyzed_at if candidate_row else None,
+                review_status=(candidate_row.review_status or "pending") if candidate_row else "pending",
+                in_library=library_row is not None,
+                library_saved_at=library_row.saved_at if library_row else None,
+                similarity_score=(candidate_row.similarity_score or 0.0) if candidate_row else 0.0,
+                similarity_breakdown=(_json_loads(candidate_row.similarity_breakdown, {}) if candidate_row else {}),
+                reference_seed=candidate_row.reference_seed if candidate_row else None,
+                data_quality_status=(
+                    candidate_row.data_quality_status or "incomplete" if candidate_row else "incomplete"
+                ),
+                collection_version=candidate_row.collection_version if candidate_row else None,
             )
         )
 

@@ -179,11 +179,21 @@ def _apply_filters(
     min_followers: int,
     min_score: int,
     keyword: str,
+    match_status: str = "matched",
+    review_status: str = "全部",
 ) -> list[dict[str, Any]]:
     """应用筛选条件。"""
     filtered: list[dict[str, Any]] = []
     keyword_lower = keyword.strip().lower() if keyword else ""
     for r in records:
+        if match_status != "全部" and r.get("match_status", "incomplete") != match_status:
+            continue
+        if review_status == "pending" and r.get("review_status", "pending") != "pending":
+            continue
+        if review_status == "saved" and not r.get("in_library"):
+            continue
+        if review_status == "skipped" and r.get("review_status") != "skipped":
+            continue
         if level != "全部" and r.get("recommendation_level") != level:
             continue
         if niche != "全部" and r.get("primary_niche") != niche:
@@ -217,15 +227,28 @@ def _row_to_table(row: dict[str, Any]) -> dict[str, Any]:
         "mexico_display": _format_confidence(row.get("mexico_confidence_score")),
         "total_score": row.get("total_score") or 0,
         "score_display": _format_score(row.get("total_score")),
+        "similarity_display": _format_score(row.get("similarity_score")),
         "recommendation_level": row.get("recommendation_level") or "D",
         "contact_summary": _format_contact(row),
+        "activity_display": (
+            "数据不可用" if row.get("days_since_last_post") is None else f"{row['days_since_last_post']} 天前"
+        ),
+        "match_status": row.get("match_status") or "incomplete",
+        "filter_reasons": "；".join(row.get("filter_reasons") or []),
+        "review_display": "已入库"
+        if row.get("in_library")
+        else {"pending": "待审核", "skipped": "已跳过"}.get(
+            row.get("review_status"), row.get("review_status") or "待审核"
+        ),
         "_full_record": row,  # 完整记录用于详情抽屉
     }
 
 
 def build_results_page() -> None:
     """构建「博主结果」页面 UI。"""
-    ui.label("从 SQLite 加载任务结果。主表只显示 7 列，点击行查看完整资料。").classes("text-grey-7 text-sm mb-4")
+    ui.label("默认显示全部可人工判断候选并按匹配分排序；可切换严格匹配视图。点击行查看完整资料。").classes(
+        "text-grey-7 text-sm mb-4"
+    )
 
     # 当前页面共享状态
     page_state: dict[str, Any] = {
@@ -239,6 +262,47 @@ def build_results_page() -> None:
         ui.label("任务：").classes("font-bold text-grey-8")
         task_select = ui.select(options={}, label="选择任务").props("outlined dense").classes("task-select")
         refresh_tasks_btn = ui.button("刷新", icon="refresh").props("flat dense color=green-8")
+
+    with ui.card().classes("w-full mb-3 filter-card"):
+        ui.label("用自然语言重新匹配现有候选").classes("font-bold text-grey-8")
+        ui.label("只在本地重新计算排序，不会再次访问 Instagram。").classes("text-grey-6 text-xs")
+        with ui.row().classes("w-full items-center gap-2"):
+            rerank_brief = (
+                ui.input(
+                    label="Brief",
+                    placeholder="例如：墨西哥香水个人创作者，粉丝大于1万，必须有公开联系方式",
+                )
+                .props("outlined dense clearable")
+                .classes("flex-1")
+            )
+            rerank_button = ui.button("重新匹配排序", icon="tune", color="green-8").props("unelevated")
+
+    def rerank_existing_candidates() -> None:
+        task_id = task_select.value
+        brief = (rerank_brief.value or "").strip()
+        if not task_id or not brief:
+            ui.notify("请先选择任务并填写 Brief", type="warning", position="top")
+            return
+        from app.extension.models import TaskRerankPayload
+        from app.extension.task_service import ExtensionTaskService
+
+        try:
+            result = ExtensionTaskService(settings=build_settings()).rerank_candidates(
+                task_id,
+                TaskRerankPayload(brief=brief),
+            )
+            page_state["records"] = _load_records(task_id)
+            page_state["current_task"] = task_id
+            render_table()
+            ui.notify(
+                f"已重新匹配 {result['profiles_reranked']} 个候选",
+                type="positive",
+                position="top",
+            )
+        except Exception as error:  # noqa: BLE001
+            ui.notify(f"重新匹配失败：{error}", type="negative", position="top")
+
+    rerank_button.on("click", lambda _: rerank_existing_candidates())
 
     # ===== 统计卡片 =====
     stats_container = ui.row().classes("w-full gap-3 mb-3 flex-wrap")
@@ -288,6 +352,23 @@ def build_results_page() -> None:
                 .props("outlined dense")
                 .classes("filter-select")
             )
+            match_select = (
+                ui.select(
+                    options={
+                        "matched": "匹配达人",
+                        "filtered": "被筛选",
+                        "private": "私密账号",
+                        "failed": "采集失败",
+                        "discovered": "已发现待补全",
+                        "incomplete": "数据补全中",
+                        "全部": "全部",
+                    },
+                    value="全部",
+                    label="匹配状态",
+                )
+                .props("outlined dense")
+                .classes("filter-select")
+            )
             niche_select = (
                 ui.select(
                     options=[
@@ -303,6 +384,15 @@ def build_results_page() -> None:
                     ],
                     value="全部",
                     label="垂类",
+                )
+                .props("outlined dense")
+                .classes("filter-select")
+            )
+            review_select = (
+                ui.select(
+                    options={"全部": "全部审核状态", "pending": "待审核", "saved": "已入库", "skipped": "已跳过"},
+                    value="全部",
+                    label="达人库",
                 )
                 .props("outlined dense")
                 .classes("filter-select")
@@ -341,7 +431,9 @@ def build_results_page() -> None:
 
     def reset_filters() -> None:
         level_select.value = "全部"
+        match_select.value = "全部"
         niche_select.value = "全部"
+        review_select.value = "全部"
         min_followers_input.value = 0
         min_score_input.value = 0
         keyword_input.value = ""
@@ -355,6 +447,31 @@ def build_results_page() -> None:
 
         # 右侧：详情抽屉（默认隐藏）
         detail_container = ui.column().classes("results-detail-col hidden")
+
+    def apply_review(record: dict[str, Any], action: str) -> None:
+        task_id = task_select.value
+        username = record.get("username")
+        if not task_id or not username:
+            return
+        from app.config import build_settings
+        from app.storage.database import Database
+        from app.storage.repositories import save_creator_to_library, set_candidate_review_status
+
+        database = Database(build_settings().checkpoint.database_file)
+        session = database.get_session()
+        try:
+            if action == "save":
+                save_creator_to_library(session, task_id, username)
+                ui.notify(f"@{username} 已加入达人库", type="positive", position="top")
+            else:
+                set_candidate_review_status(session, task_id, username, "skipped")
+                ui.notify(f"@{username} 已跳过", position="top")
+        finally:
+            session.close()
+            database.close()
+        page_state["records"] = _load_records(task_id)
+        render_detail(None)
+        render_table()
 
     # ===== 详情抽屉渲染 =====
     def render_detail(record: dict[str, Any] | None) -> None:
@@ -408,6 +525,9 @@ def build_results_page() -> None:
 
                 # 评分明细
                 ui.label("评分明细").classes("detail-section-label mt-3")
+                _detail_kv("本地相似度", _format_score(record.get("similarity_score")))
+                _detail_kv("参考种子", record.get("reference_seed") or "-")
+                _detail_kv("数据质量", record.get("data_quality_status") or "incomplete")
                 score_breakdown = record.get("score_breakdown") or {}
                 total = record.get("total_score") or 0
                 with ui.row().classes("w-full items-center mb-1"):
@@ -425,6 +545,30 @@ def build_results_page() -> None:
                     ui.label("推荐理由").classes("detail-section-label mt-2")
                     for r in reasons:
                         ui.label(f"• {r}").classes("text-grey-7 text-xs")
+
+                ui.label("匹配与数据状态").classes("detail-section-label mt-3")
+                _detail_kv("匹配状态", record.get("match_status") or "incomplete")
+                filter_reasons = record.get("filter_reasons") or []
+                _detail_kv("筛选原因", " / ".join(filter_reasons) if filter_reasons else "-")
+                _detail_kv("发现来源", " / ".join(record.get("discovery_sources") or []) or "-")
+                missing: list[str] = []
+                if record.get("follower_count") is None:
+                    missing.append("粉丝数")
+                if record.get("days_since_last_post") is None:
+                    missing.append("最后发布时间")
+                if record.get("reels_view_data_available") == "not_visible":
+                    missing.append("Reels 播放量不可见")
+                elif record.get("reels_view_data_available") == "no_reels":
+                    missing.append("没有发现 Reels")
+                _detail_kv("数据缺失", " / ".join(missing) if missing else "无")
+
+                with ui.row().classes("w-full gap-2 mt-3"):
+                    ui.button("加入达人库", icon="star", color="green-8").on(
+                        "click", lambda _, item=record: apply_review(item, "save")
+                    )
+                    ui.button("跳过", icon="skip_next", color="grey-6").props("outline").on(
+                        "click", lambda _, item=record: apply_review(item, "skip")
+                    )
 
                 # 垂类与墨西哥信号
                 ui.label("垂类与地区").classes("detail-section-label mt-3")
@@ -521,6 +665,8 @@ def build_results_page() -> None:
             min_followers=int(min_followers_input.value or 0),
             min_score=int(min_score_input.value or 0),
             keyword=keyword_input.value or "",
+            match_status=match_select.value or "全部",
+            review_status=review_select.value or "全部",
         )
         page_state["filtered"] = filtered
 
@@ -579,6 +725,13 @@ def build_results_page() -> None:
                     "sortable": False,
                 },
                 {
+                    "name": "similarity_display",
+                    "label": "相似度",
+                    "field": "similarity_display",
+                    "align": "right",
+                    "sortable": False,
+                },
+                {
                     "name": "score_display",
                     "label": "评分",
                     "field": "score_display",
@@ -591,6 +744,34 @@ def build_results_page() -> None:
                     "field": "contact_summary",
                     "align": "left",
                     "sortable": False,
+                },
+                {
+                    "name": "activity_display",
+                    "label": "活跃状态",
+                    "field": "activity_display",
+                    "align": "left",
+                    "sortable": False,
+                },
+                {
+                    "name": "match_status",
+                    "label": "匹配状态",
+                    "field": "match_status",
+                    "align": "left",
+                    "sortable": True,
+                },
+                {
+                    "name": "filter_reasons",
+                    "label": "筛选原因",
+                    "field": "filter_reasons",
+                    "align": "left",
+                    "sortable": False,
+                },
+                {
+                    "name": "review_display",
+                    "label": "达人库",
+                    "field": "review_display",
+                    "align": "left",
+                    "sortable": True,
                 },
             ]
 

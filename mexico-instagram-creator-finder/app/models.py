@@ -5,8 +5,9 @@
 """
 
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _BaseModel(BaseModel):
@@ -26,6 +27,42 @@ class CandidateAccount(_BaseModel):
     source_hashtags: list[str] = []
     discovered_at: datetime
     normalized: bool = False
+
+
+class SearchIntent(_BaseModel):
+    """自然语言 Brief 解析后的可执行搜索意图。"""
+
+    raw_brief: str = ""
+    target_niches: list[str] = Field(default_factory=list)
+    target_regions: list[str] = Field(default_factory=list)
+    target_account_types: list[str] = Field(default_factory=list)
+    content_keywords: list[str] = Field(default_factory=list)
+    min_followers: int | None = None
+    max_followers: int | None = None
+    maximum_days_since_last_post: int | None = None
+    minimum_median_reel_views: int | None = None
+    require_public_account: bool = True
+    require_mexico_signal: bool = False
+    require_public_contact: bool = False
+    exclude_brands: bool = True
+    exclude_media_accounts: bool = True
+
+
+class ExtensionMediaData(_BaseModel):
+    """浏览器扩展从单条公开内容页提交的摘要。"""
+
+    username: str
+    media_url: str
+    shortcode: str
+    media_type: str = "post"
+    taken_at: datetime | None = None
+    caption: str | None = None
+    like_count: int | None = None
+    comment_count: int | None = None
+    visible_play_count: int | None = None
+    is_reel: bool = False
+    collected_at: datetime
+    field_sources: dict[str, str | None] = Field(default_factory=dict)
 
 
 class ProfileData(_BaseModel):
@@ -50,6 +87,7 @@ class ProfileData(_BaseModel):
     business_category_name: str | None = None
     external_url: str | None = None
     public_email: str | None = None
+    field_sources: dict[str, str] = Field(default_factory=dict)
     collected_at: datetime
 
 
@@ -175,3 +213,15 @@ class CreatorRecord(_BaseModel):
     excluded: bool = False
     exclusion_source: str | None = None
     exclusion_reason: str | None = None
+    discovery_sources: list[str] = Field(default_factory=list)
+    match_status: str = "incomplete"
+    filter_reasons: list[str] = Field(default_factory=list)
+    last_analyzed_at: datetime | None = None
+    review_status: str = "pending"
+    in_library: bool = False
+    library_saved_at: datetime | None = None
+    similarity_score: float = 0.0
+    similarity_breakdown: dict[str, Any] = Field(default_factory=dict)
+    reference_seed: str | None = None
+    data_quality_status: str = "incomplete"
+    collection_version: str | None = None

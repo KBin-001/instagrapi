@@ -46,7 +46,7 @@ EXTENSION_TASK_ID = "extension_ingest"
 
 
 # 数字文本解析正则：匹配 "52.4K"、"1,234"、"1.2M"、"1,234,567" 等
-_COUNT_RE = re.compile(r"([\d][\d.,]*)\s*([kKmMbB]?)")
+_COUNT_RE = re.compile(r"([\d][\d.,]*)\s*([kKmMbB]|万)?")
 
 
 def parse_count_text(text: str | None) -> int | None:
@@ -67,7 +67,7 @@ def parse_count_text(text: str | None) -> int | None:
     if not m:
         return None
     num_str = m.group(1).replace(",", "")
-    suffix = m.group(2).lower()
+    suffix = (m.group(2) or "").lower()
     try:
         num = float(num_str)
     except ValueError:
@@ -78,6 +78,8 @@ def parse_count_text(text: str | None) -> int | None:
         num *= 1_000_000
     elif suffix == "b":
         num *= 1_000_000_000
+    elif suffix == "万":
+        num *= 10_000
     return int(num)
 
 
@@ -228,7 +230,6 @@ class ExtensionIngestService:
 
     def ingest_candidates(self, payload: ExtensionCandidatesPayload) -> CandidatesIngestResult:
         """接收候选账号列表并落库（场景二/三）。"""
-        from app.discovery.seeds import parse_exclude_paths, parse_exclude_strings
 
         with self._lock:
             self._reset_stats_if_new_day()
@@ -274,7 +275,7 @@ class ExtensionIngestService:
                 else:
                     new_count += 1
             session.commit()
-        except Exception as e:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception("ingest_candidates failed")
             return CandidatesIngestResult(total=len(payload.candidates))
         finally:
@@ -323,14 +324,17 @@ class ExtensionIngestService:
             full_name=p.full_name,
             biography=p.biography,
             profile_url=payload.page_url,
+            profile_pic_url=p.profile_pic_url,
             follower_count=followers,
             following_count=following,
             media_count=posts,
-            is_private=False,  # 网页能正常显示即视为公开
+            is_private=p.is_private,
             is_verified=p.is_verified,
             is_business=p.is_business,
             category_name=p.category_name,
             external_url=external_url,
+            public_email=p.public_email,
+            field_sources=p.field_sources,
             collected_at=payload.collected_at,
         )
 

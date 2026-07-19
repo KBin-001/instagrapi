@@ -125,14 +125,7 @@ def compute_score(
     breakdown["follower_range"] = round(follower_score, 2)
 
     # 6. 公开商务联系方式 (5 分)
-    contact_score = 0.0
-    if contact.public_email:
-        contact_score += 2.0
-    if contact.public_whatsapp_url:
-        contact_score += 2.0
-    if contact.linktree_url or contact.beacons_url:
-        contact_score += 1.0
-    contact_score = min(contact_score, 5.0)
+    contact_score = 5.0 if contact.has_public_contact else 0.0
     breakdown["public_contact"] = round(contact_score, 2)
 
     # 7. 个人创作者可信度 (5 分)

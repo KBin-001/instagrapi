@@ -32,7 +32,7 @@ from app.services.domain import (
 )
 
 logger = get_logger("gui.state")
-setup_logging()
+setup_logging(log_file="logs/app.log")
 
 
 @dataclass
@@ -56,6 +56,7 @@ class GuiState:
     last_error: str | None = None
     # 运行起始时间（用于显示已用时长）
     started_at: float | None = None
+    active_extension_task_id: str | None = None
 
     @property
     def is_running(self) -> bool:
@@ -121,6 +122,14 @@ class GuiState:
 
     def stop_search(self) -> tuple[bool, str]:
         """请求停止当前任务（协作式取消）。"""
+        if not self.is_running and self.active_extension_task_id:
+            from app.extension.task_service import ExtensionTaskService
+
+            task_id = self.active_extension_task_id
+            ExtensionTaskService(settings=self.settings).control(task_id, "stop")
+            self.active_extension_task_id = None
+            logger.info("extension task stopped: %s", task_id)
+            return True, "扩展发现任务已停止，已完成的数据仍然保留"
         if not self.is_running or self._token is None:
             return False, "当前无运行中的任务"
         self._token.cancel()

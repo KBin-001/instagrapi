@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -76,6 +75,9 @@ class TestParseCountText:
 
     def test_b_suffix(self) -> None:
         assert parse_count_text("1.5B") == 1500000000
+
+    def test_chinese_wan_suffix(self) -> None:
+        assert parse_count_text("2.9万") == 29000
 
     def test_with_text_around(self) -> None:
         # Instagram 网页文本通常带 "followers" 等字样
@@ -226,8 +228,9 @@ class TestIngestCreator:
         service.ingest_creator(payload)
 
         # 从数据库查询
-        from app.storage.database import Database, ProfileRow
         from sqlalchemy import select
+
+        from app.storage.database import Database, ProfileRow
 
         db = Database(service.settings.checkpoint.database_file)
         session = db.get_session()

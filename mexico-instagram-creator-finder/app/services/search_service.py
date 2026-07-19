@@ -201,13 +201,12 @@ class SearchService:
             client: Any = FakeInstagramClient(settings)
         else:
             # 非 dry-run 模式不再支持 instagrapi 移动端 API 登录
-            # 默认数据采集通道为浏览器扩展（见 dist/chrome_extension/）
+            # 默认数据采集通道为浏览器扩展（见 browser_extension/）
             # InstagramClient 已移除登录方法，hashtag 搜索流程作为「实验功能」默认关闭
             from app.exceptions import FinderError
 
             raise FinderError(
-                "非 dry-run 模式不再支持 instagrapi 登录。"
-                "请使用浏览器扩展采集数据，或开启 DRY-RUN 模式测试流程。"
+                "非 dry-run 模式不再支持 instagrapi 登录。请使用浏览器扩展采集数据，或开启 DRY-RUN 模式测试流程。"
             )
 
         try:

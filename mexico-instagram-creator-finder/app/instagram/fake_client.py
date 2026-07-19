@@ -542,6 +542,20 @@ class FakeInstagramClient:
         medias = self._medias_cache.get(username, [])
         return medias[:amount]
 
+    def search_users(self, query: str, amount: int = 20) -> list[FakeUser]:
+        lowered = query.lower()
+        matches = [
+            user
+            for user in self._users_db.values()
+            if lowered in user.username.lower()
+            or lowered in user.full_name.lower()
+            or lowered in user.biography.lower()
+        ]
+        return matches[:amount]
+
+    def related_profiles(self, username: str, amount: int = 20) -> list[FakeUser]:
+        return [user for key, user in self._users_db.items() if key != username][:amount]
+
 
 __all__ = [
     "FakeInstagramClient",

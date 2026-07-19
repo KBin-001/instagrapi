@@ -13,7 +13,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.extension.models import ExtensionProfileData, ExtensionProfilePayload
 from app.extension.service import ExtensionIngestService
 from app.extension.token_store import ExtensionTokenStore
 
@@ -216,6 +215,38 @@ class TestCreatorEndpoint:
         assert data["today_new_candidates"] == 1
 
 
+class TestTaskDiagnosticsEndpoints:
+    def test_events_and_retry_failed_require_token_and_return_data(self, client: TestClient, token: str) -> None:
+        created = client.post(
+            "/api/extension/tasks",
+            json={"seeds": ["diagnostic.creator"], "max_profiles_to_analyze": 1},
+            headers=_auth_headers(token),
+        )
+        task_id = created.json()["task_id"]
+
+        unauthorized = client.get(f"/api/extension/tasks/{task_id}/events")
+        events = client.get(f"/api/extension/tasks/{task_id}/events", headers=_auth_headers(token))
+        retry = client.post(f"/api/extension/tasks/{task_id}/retry-failed", headers=_auth_headers(token))
+        rerank_unauthorized = client.post(
+            f"/api/extension/tasks/{task_id}/rerank",
+            json={"brief": "墨西哥香水达人，粉丝大于1万"},
+        )
+        rerank = client.post(
+            f"/api/extension/tasks/{task_id}/rerank",
+            json={"brief": "墨西哥香水达人，粉丝大于1万"},
+            headers=_auth_headers(token),
+        )
+
+        assert unauthorized.status_code == 401
+        assert events.status_code == 200
+        assert events.json()["events"][0]["event_type"] == "task_created"
+        assert retry.status_code == 200
+        assert retry.json()["retried"] == 0
+        assert rerank_unauthorized.status_code == 401
+        assert rerank.status_code == 200
+        assert rerank.json()["intent"]["min_followers"] == 10_000
+
+
 # ===== candidates =====
 
 
@@ -242,7 +273,6 @@ class TestCandidatesEndpoint:
         assert data["duplicates"] == 0
 
     def test_candidates_no_token_401(self, client: TestClient) -> None:
-        # 传一个完整 payload 但不带 token
         payload = {
             "source": "instagram_web_extension",
             "collected_at": datetime.now(UTC).isoformat(),
@@ -251,6 +281,64 @@ class TestCandidatesEndpoint:
         }
         resp = client.post("/api/extension/candidates", json=payload)
         assert resp.status_code == 401
+
+
+class TestTaskEndpoints:
+    def test_create_active_claim_pause_resume_and_stop(self, client: TestClient, token: str) -> None:
+        headers = _auth_headers(token)
+        created = client.post(
+            "/api/extension/tasks",
+            json={
+                "brief": "Mexico perfume creators, 20k-300k followers",
+                "seeds": ["seed.creator"],
+                "hashtags": ["perfumemexico"],
+            },
+            headers=headers,
+        )
+        assert created.status_code == 200
+        task_id = created.json()["task_id"]
+
+        active = client.get("/api/extension/tasks/active", headers=headers)
+        assert active.status_code == 200
+        assert active.json()["task"]["task_id"] == task_id
+
+        claimed = client.post(f"/api/extension/tasks/{task_id}/next", headers=headers)
+        assert claimed.status_code == 200
+        assert claimed.json()["item"]["page_type"] == "profile"
+
+        assert client.post(f"/api/extension/tasks/{task_id}/pause", headers=headers).json()["status"] == "paused"
+        assert client.post(f"/api/extension/tasks/{task_id}/resume", headers=headers).json()["status"] == "running"
+        assert client.post(f"/api/extension/tasks/{task_id}/stop", headers=headers).json()["status"] == "stopped"
+
+    def test_review_creator_and_save_to_library(self, client: TestClient, token: str) -> None:
+        headers = _auth_headers(token)
+        created = client.post(
+            "/api/extension/tasks",
+            json={"seeds": ["review.creator"]},
+            headers=headers,
+        ).json()
+        task_id = created["task_id"]
+        item = client.post(f"/api/extension/tasks/{task_id}/next", headers=headers).json()["item"]
+        profile = _make_creator_payload("review.creator")
+        profile["queue_item_id"] = item["id"]
+        response = client.post(
+            f"/api/extension/tasks/{task_id}/profile",
+            json=profile,
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        review = client.get(f"/api/extension/tasks/{task_id}/review/next", headers=headers)
+        assert review.status_code == 200
+        assert review.json()["creator"]["username"] == "review.creator"
+
+        saved = client.post(
+            f"/api/extension/tasks/{task_id}/review/review.creator/save",
+            json={"list_name": "默认达人库"},
+            headers=headers,
+        )
+        assert saved.status_code == 200
+        assert saved.json()["review_status"] == "saved"
 
 
 # ===== regenerate-token =====

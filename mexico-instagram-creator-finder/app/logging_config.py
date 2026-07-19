@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 # 需要脱敏的关键词模式
@@ -93,7 +94,12 @@ def setup_logging(
     if log_file is not None:
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        file_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=2_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
         file_handler.addFilter(sensitive_filter)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from app.logging_config import get_logger
 from app.models import ContactInfo, ProfileData
@@ -30,10 +31,31 @@ _WHATSAPP_BUSINESS_PATTERN = re.compile(
 _MAILTO_PATTERN = re.compile(r"mailto:([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})", re.IGNORECASE)
 
 # Linktree
-_LINKTREE_PATTERN = re.compile(r"https?://linktr\.ee/([A-Za-z0-9_\-]+)", re.IGNORECASE)
+_LINKTREE_PATTERN = re.compile(r"(?:https?://)?linktr\.ee/([A-Za-z0-9_.\-]+)", re.IGNORECASE)
 
 # Beacons
-_BEACONS_PATTERN = re.compile(r"https?://beacons\.ai/([A-Za-z0-9_\-]+)", re.IGNORECASE)
+_BEACONS_PATTERN = re.compile(r"(?:https?://)?beacons\.ai/([A-Za-z0-9_.\-]+)", re.IGNORECASE)
+
+_SOCIAL_HOSTS = {
+    "instagram.com",
+    "www.instagram.com",
+    "threads.com",
+    "www.threads.com",
+    "facebook.com",
+    "www.facebook.com",
+    "tiktok.com",
+    "www.tiktok.com",
+    "youtube.com",
+    "www.youtube.com",
+}
+
+
+def _is_public_contact_url(value: str) -> bool:
+    try:
+        host = (urlparse(value).hostname or "").lower()
+    except ValueError:
+        return False
+    return bool(host and host not in _SOCIAL_HOSTS)
 
 
 def _safe_lower(value: Any) -> str:
@@ -108,7 +130,7 @@ def extract_contacts(profile: ProfileData) -> ContactInfo:
         sources.append("biography_beacons")
 
     # 8. external_url 作为公开网站
-    final_external_url = external_url or None
+    final_external_url = external_url if _is_public_contact_url(external_url) else None
     if final_external_url:
         sources.append("external_url")
 

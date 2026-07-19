@@ -121,3 +121,14 @@ def test_fake_client_no_network_calls() -> None:
     assert not hasattr(client, "_client") or client.__class__.__name__ == "FakeInstagramClient"
     # 不应该有 rate_limiter（真实客户端才有）
     assert not hasattr(client, "_rate_limiter")
+
+
+def test_fake_client_supports_read_only_search_and_related_profiles() -> None:
+    client = FakeInstagramClient()
+
+    matches = client.search_users("香水", amount=5)
+    related = client.related_profiles(matches[0].username, amount=3)
+
+    assert matches
+    assert len(related) <= 3
+    assert all(user.username != matches[0].username for user in related)

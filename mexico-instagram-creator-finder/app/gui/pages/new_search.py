@@ -10,7 +10,11 @@ from typing import Any
 
 from nicegui import ui
 
+from app.analysis.brief_parser import parse_search_brief
 from app.config import build_settings, load_hashtags, load_niche_keywords
+from app.extension.models import ExtensionTaskCreate
+from app.extension.task_service import ExtensionTaskService
+from app.gui.dependencies import get_ingest_service
 from app.gui.state import gui_state
 
 # ===== 搜索领域配置（与 niche_keywords.yaml 对应）=====
@@ -28,6 +32,7 @@ NICHE_OPTIONS: list[tuple[str, str, str]] = [
 def _count_excluded_usernames() -> int:
     """统计当前排除名单中的用户名数量（从 settings.exclude_files 解析）。"""
     settings = gui_state.settings
+
     if not settings.exclude_files:
         return 0
     try:
@@ -58,6 +63,41 @@ def build_new_search_page() -> None:
     )
 
     settings = gui_state.settings
+
+    ui.label("1. 目标 Brief").classes("section-label")
+    brief_text = (
+        ui.textarea(
+            placeholder="例如：寻找墨西哥香水/美妆个人创作者，2万—30万粉丝，最近90天活跃，需要公开联系方式",
+        )
+        .props("outlined rows=3 class=w-full")
+        .classes("mb-3")
+    )
+    brief_preview = ui.label("填写 Brief 后会在这里显示解析结果。").classes("text-grey-6 text-xs mb-3")
+
+    def update_brief_preview(_e: Any = None) -> None:
+        intent = parse_search_brief(brief_text.value or "")
+        followers = (
+            f"{intent.min_followers or '不限'}—{intent.max_followers or '不限'}"
+            if intent.min_followers is not None or intent.max_followers is not None
+            else "未指定"
+        )
+        reel_threshold = intent.minimum_median_reel_views if intent.minimum_median_reel_views is not None else "未指定"
+        brief_preview.text = (
+            f"解析预览｜地区：{', '.join(intent.target_regions) or '未指定'}；"
+            f"垂类：{', '.join(intent.target_niches) or '未指定'}；粉丝：{followers}；"
+            f"活跃：{intent.maximum_days_since_last_post or '未指定'}天；"
+            f"Reels门槛：{reel_threshold}；"
+            f"公开联系：{'必须' if intent.require_public_contact else '不强制'}"
+        )
+
+    brief_text.on("update:model-value", update_brief_preview)
+
+    ui.label("2. 发现来源").classes("section-label")
+    with ui.row().classes("w-full gap-3 mb-3"):
+        seed_text = ui.textarea(placeholder="种子主页或用户名，每行一个").props("outlined rows=4").classes("flex-1")
+        bulk_links_text = (
+            ui.textarea(placeholder="批量 Instagram 主页链接，最多100条").props("outlined rows=4").classes("flex-1")
+        )
 
     # ===== 搜索方式（单选）=====
     ui.label("搜索方式").classes("section-label")
@@ -91,12 +131,12 @@ def build_new_search_page() -> None:
             "2. 打开任意符合方向的创作者主页（如香水 / 美妆 / 护肤 / 穿搭博主）\n"
             "3. 点击浏览器工具栏的扩展图标，打开侧边栏\n"
             "4. 在侧边栏粘贴本地令牌（在「设置 → 浏览器扩展」可查看）\n"
-            "5. 点击「保存到本地」，账号会自动进入本地任务\n"
-            "6. 重复以上步骤采集更多账号，或前往「博主结果」页查看"
+            "5. 在本页面创建任务，再在侧边栏点击「开始」\n"
+            "6. 扩展会顺序发现、补全并排序候选，你只需人工加入达人库"
         ).classes("text-grey-7 text-sm whitespace-pre-wrap")
-        ui.label(
-            "本模式不调用 instagrapi，不会触发 ChallengeRequired 或 HTTP 429。"
-        ).classes("text-green-7 text-xs mt-2")
+        ui.label("本模式不调用 instagrapi，不会触发 ChallengeRequired 或 HTTP 429。").classes(
+            "text-green-7 text-xs mt-2"
+        )
 
     def on_type_change(_e: Any) -> None:
         v = search_type.value
@@ -104,11 +144,10 @@ def build_new_search_page() -> None:
             mode_hint.text = "✓ 已选择浏览器扩展发现，按上方说明操作"
             mode_hint.classes(replace="text-green-7 text-xs")
             extension_card.set_visibility(True)
-            hashtag_card.set_visibility(False)
+            hashtag_card.set_visibility(True)
         elif v == "hashtag":
             mode_hint.text = (
-                "⚠️ 实验功能：instagrapi 移动端 API 登录已移除，"
-                "仅 DRY-RUN 模式可运行真实搜索。可能触发 Instagram 验证。"
+                "⚠️ 实验功能：instagrapi 移动端 API 登录已移除，仅 DRY-RUN 模式可运行真实搜索。可能触发 Instagram 验证。"
             )
             mode_hint.classes(replace="text-amber-7 text-xs")
             extension_card.set_visibility(False)
@@ -144,7 +183,7 @@ def build_new_search_page() -> None:
 
     # ===== Hashtag 输入（核心卡片）=====
     hashtag_card = ui.card().classes("w-full mb-3 hashtag-card")
-    hashtag_card.set_visibility(False)  # 默认隐藏，扩展模式下不显示
+    hashtag_card.set_visibility(True)
     with hashtag_card:
         ui.label("Hashtag").classes("card-label")
         ui.label("每行一个，不带 # 号；留空则使用 config/hashtags.yaml 默认值。").classes("text-grey-7 text-xs mb-1")
@@ -268,7 +307,7 @@ def build_new_search_page() -> None:
     # ===== 最低 Reels 中位播放量 =====
     ui.label("最低 Reels 中位播放量").classes("section-label mt-2")
     min_reel_views = ui.number(
-        value=settings.filters.minimum_median_reel_views,
+        value=0,
         min=0,
         step=500,
     ).props("outlined dense class=w-full mt-1 mb-2")
@@ -341,7 +380,7 @@ def build_new_search_page() -> None:
         stop_btn.set_enabled(False)
 
     def update_buttons() -> None:
-        if gui_state.is_running:
+        if gui_state.is_running or gui_state.active_extension_task_id:
             start_btn.disable()
             stop_btn.enable()
         else:
@@ -351,16 +390,48 @@ def build_new_search_page() -> None:
     ui.timer(0.5, update_buttons)
 
     def on_start() -> None:
-        # 扩展模式：不启动 SearchService，提示用户去扩展操作
+        # 扩展模式：创建持久化任务，Chrome 扩展从队列顺序领取。
         if search_type.value == "extension":
-            ui.notify(
-                "浏览器扩展模式无需启动搜索。请在 Chrome 中打开 Instagram 主页并使用扩展采集。",
-                type="info",
-                position="top",
-                timeout=6000,
-            )
-            msg_label.text = "请在 Chrome 扩展中采集账号，结果会自动进入本地数据库。"
-            msg_label.classes(replace="text-blue-7")
+            hashtags = [h.strip().lstrip("#").lower() for h in (hashtag_text.value or "").splitlines() if h.strip()]
+            seeds = [line.strip() for line in (seed_text.value or "").splitlines() if line.strip()]
+            bulk_links = [line.strip() for line in (bulk_links_text.value or "").splitlines() if line.strip()]
+            if len(bulk_links) > 100:
+                ui.notify("批量主页链接最多100条", type="warning", position="top")
+                return
+            if not hashtags and not seeds and not bulk_links and not (brief_text.value or "").strip():
+                ui.notify("请填写 Brief 或至少一种发现来源", type="warning", position="top")
+                return
+            try:
+                task_service = ExtensionTaskService(settings=settings, connected_service=get_ingest_service())
+                result = task_service.create_task(
+                    ExtensionTaskCreate(
+                        brief=brief_text.value or "",
+                        seeds=seeds,
+                        hashtags=hashtags,
+                        bulk_links=bulk_links,
+                        min_followers=int(min_followers.value or 0),
+                        max_followers=int(max_followers.value or 0),
+                        minimum_median_reel_views=(
+                            int(min_reel_views.value) if int(min_reel_views.value or 0) > 0 else None
+                        ),
+                        require_mexico_signal=bool(cb_mexico.value),
+                        require_public_contact=bool(cb_contact.value),
+                        require_public_account=bool(cb_public.value),
+                        exclude_brands=bool(cb_no_brand.value),
+                        exclude_media_accounts=bool(cb_no_brand.value),
+                        target_niches=[key for key, selected in selected_niches.items() if selected],
+                        max_profiles_to_analyze=int(max_profiles.value or 1),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - UI 显示可操作错误
+                ui.notify(f"创建任务失败：{exc}", type="negative", position="top")
+                return
+            gui_state.active_extension_task_id = result["task_id"]
+            waiting = result["status"] == "waiting_extension"
+            msg = "任务已创建，等待扩展连接" if waiting else "任务已创建，扩展可以开始批量搜索"
+            ui.notify(msg, type="warning" if waiting else "positive", position="top")
+            msg_label.text = f"{msg}：{result['task_id']}"
+            msg_label.classes(replace="text-amber-7" if waiting else "text-green-7")
             return
 
         # 解析 hashtag

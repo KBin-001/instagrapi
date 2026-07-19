@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from app.extension.service import ExtensionIngestService
 
-
 _ingest_service: ExtensionIngestService | None = None
 
 

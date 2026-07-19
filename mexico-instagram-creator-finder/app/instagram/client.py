@@ -3,7 +3,7 @@
 ⚠️ 本模块依赖 instagrapi 模拟移动端私有 API，可能触发 ChallengeRequired、
 HTTP 429 等安全机制。**已不再作为默认数据采集通道**，仅供实验性使用。
 
-默认数据采集通道为浏览器扩展（参见 dist/chrome_extension/）。
+默认数据采集通道为浏览器扩展（正式源码参见 browser_extension/，dist/chrome_extension/ 为兼容产物）。
 
 业务模块禁止直接创建 instagrapi.Client()。
 """
@@ -188,3 +188,27 @@ class InstagramClient:
             amount,
         )
         return medias or []
+
+    def search_users(self, query: str, amount: int = 20) -> list[Any]:
+        """[实验] 使用已认证本地 Session 低频搜索公开账号。"""
+        users = self._safe_call(
+            "search_users",
+            self.client.search_users,
+            query,
+            amount,
+        )
+        return list(users or [])[:amount]
+
+    def related_profiles(self, username: str, amount: int = 20) -> list[Any]:
+        """[实验] 读取公开 GraphQL 返回的相似账号；不可用时由安全异常策略停止。"""
+        user_id = self._safe_call(
+            "user_id_from_username",
+            self.client.user_id_from_username,
+            username,
+        )
+        users = self._safe_call(
+            "user_related_profiles_gql",
+            self.client.user_related_profiles_gql,
+            user_id,
+        )
+        return list(users or [])[:amount]

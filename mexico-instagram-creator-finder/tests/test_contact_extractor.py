@@ -124,6 +124,22 @@ def test_external_url_field() -> None:
     assert result.has_public_contact is True
 
 
+def test_threads_url_is_not_treated_as_public_contact() -> None:
+    result = extract_contacts(_make_profile(external_url="https://www.threads.com/@testuser"))
+
+    assert result.external_url is None
+    assert result.has_public_contact is False
+
+
+def test_visible_linktree_without_scheme_is_public_contact() -> None:
+    profile = _make_profile(biography="Colaboraciones: linktr.ee/creadora.mx")
+
+    result = extract_contacts(profile)
+
+    assert result.linktree_url == "https://linktr.ee/creadora.mx"
+    assert result.has_public_contact is True
+
+
 # ---------- 负面场景 ----------
 
 
